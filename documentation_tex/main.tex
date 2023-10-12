@@ -1,0 +1,111 @@
+%---------------DOCUMENT SETTINGS------------------------------------
+%\documentclass[headheight=30pt]{scrartcl}
+\documentclass[12pt]{scrartcl}
+
+\usepackage[utf8]{inputenc} % utf8x durch utf8 ersetzt wegen biblatex
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amstext,amsfonts}
+\usepackage[ngerman]{babel}
+\usepackage{csquotes}
+\usepackage{pdfpages} %zum importieren von pdf dateien
+\usepackage{geometry}
+\usepackage[headsepline]{scrlayer-scrpage}
+\usepackage{lastpage}
+%\usepackage[style=numeric]{biblatex} %Literaturverwaltung
+\usepackage{float}
+\usepackage{textcomp}
+\usepackage{gensymb}
+\usepackage{physics}
+\usepackage{graphicx}
+\usepackage[export]{adjustbox}
+\usepackage{a4wide}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{multicol}
+\usepackage{makecell}
+%für seminararbeit
+\usepackage{doi}
+\usepackage[compress]{cite}
+
+\geometry{      %holt mehr aus einer A4 Seite raus
+    a4paper,
+    total={170mm,257mm},
+    left=20mm,
+    top=25mm,
+    bottom = 25mm
+   }
+\graphicspath{ {./nudes/} }  %pfad für bilder
+
+
+\hypersetup{colorlinks=false}
+
+%\addbibresource{literatur.bib} %Literatur-Resourcen
+%\setlength{\headheight}{0.0pt} % macht zwar headheight warnings aber dafür nutz latex die seitengröße besser aus.
+\pagestyle{scrheadings}
+\newcommand{\subf}[2]{
+    {
+        \begin{tabular}[c]{@{}c@{}}
+            {\setlength{\extrarowheight}{100pt} #1 }\\#2
+        \end{tabular}
+    }
+}
+\newcommand{\allc}{\multicolumn{1}{c|}{-}}
+\newcommand{\monofig}[4]{
+    
+    \begin{figure}[H]
+    \centering
+    \includegraphics[#1]{#2}
+    \caption{
+        #3
+    }
+    \label{#4}
+    \end{figure}
+    
+}
+\newcommand{\polyfig}[6]{
+    \begin{figure}[H]
+        \centering
+        \begin{minipage}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=0.9\textwidth]{#1}
+            \caption{#2}
+            \label{#3}
+        \end{minipage}
+        \begin{minipage}[b]{0.45\textwidth}
+            \centering
+            \includegraphics[width=0.9\textwidth]{#4}
+            \caption{#5}
+            \label{#6}
+        \end{minipage}
+    \end{figure}
+}
+\newcommand{\code}[1]{
+    \texttt{#1}
+}
+
+\date{\today{}, Location}
+\author{Wilhelm Ecker , Aleksey Sokolov}
+\title{Dokumentitel}
+
+%---------------HEADER TEXT------------------------------------
+\clearpairofpagestyles
+\ihead{\today{} \\ }
+\chead{Wilhelm Ecker / Aleksey Sokolov\\Elektronen Beschleuniger in der Medizin }
+\ohead{Seminar\\ }
+\cfoot{\pagemark \, / \, \pageref{LastPage}}
+
+%---------------DOCUMENT TEXT------------------------------------
+\begin{document}
+%\includepdf[]{Deckblatt.pdf} %Insert title page NaWi-Graz
+\input{chapters/0_titelseite.tex}
+\tableofcontents
+\newpage
+
+
+\input{chapters/1_abstract.tex}
+\input{chapters/2_diagnostik.tex}
+\input{chapters/3_x_ray_therapie.tex}
+\input{chapters/4_conclussion.tex}
+\bibliography{literatur.bib}
+\bibliographystyle{seminarstyle}
+\end{document}
