@@ -29,11 +29,12 @@ a = [1,2,3,4,5,6,7,8,9]
 
 print(change_pos(a,1,5),change_pos(a,1,5))
 def calculate_energy(array):
-    shifted_array = np.roll(array,-1)
+    shifted_array = np.empty_like(array)
+    shifted_array[:-1] = array[1:]
     delta = shifted_array - array
     energy = 0
     for d in delta:
-        energy += norm(d)
+        energy += np.sqrt(np.sum(d**2))
     return energy
 
 def create_cities(N):
@@ -66,7 +67,7 @@ def find_best_route_manual(
         for n_s in range(0,N_sweeps):
             a = np.random.randint(0,len(cities_pos))
             b = np.random.randint(0,len(cities_pos))
-
+  
             if a > b:
                 tempindex = a
                 a = b
@@ -156,7 +157,7 @@ if __name__ == '__main__':
     fig.savefig("ch150_City_Pos_two_heating2.pdf")
     #ax[1].plot(all_energies_var)
     plt.show()
-    pass
+    
 
 
 
