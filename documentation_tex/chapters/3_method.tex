@@ -1,0 +1,70 @@
+\section{Methods}
+
+
+There are three algorithms used in this project paper. 
+In this section these three methods are explained and discussed.
+\subsection{Simulated Annealing}
+Simulated Annealing is a computational method that takes inspiration from solid state physics, namely from solid annealing and crystalization.
+As solids are heated they form different crystal structures.
+If left to cool local order emerges, driven by the tendency of a material to reduce internal stress and to attain a lower energy state.
+The same principle is applied to the a sequence of city positions where the order in which the cities are visited strongly influences the path length. 
+In this approach, the length of sequentially ordered cities is considered the Free Energy of the system:
+\begin{equation}
+    E(\{\mathbf{x}\}) = \sum_{i=1}^{N} |\mathbf{x}_{i+1} - \mathbf{x}_i| \quad \text{mit} \quad \mathbf{x}_{N+1} = \mathbf{x}_1.
+    \label{eg:energy}
+\end{equation}
+In this, the $N!$ combinations of states (particular permutations) form a statistical ensemble, which corresponds to a partition function. 
+The partition function encapsulates the statistical properties of the system in thermodynamic equilibrium. 
+It serves as a function of thermodynamic state variables, such as temperature, and provides access to macroscopic quantities like free energy through its derivatives.
+The canonical partition function, commonly used in such contexts, describes a system in thermal equilibrium with its environment at a fixed temperature. 
+Since direct computation of the partition function by summing over all possible states is infeasible due to the factorial growth of possible permutations, Simulated Annealing is employed to explore the configuration space.
+
+\begin{equation}
+    Z = \sum_i e^{-\beta E_i}
+    \label{eq:partition}
+\end{equation}
+
+\noindent One can use the Boltzman distribution to determine the probability of observing a state $\mathbf{x}$ at a given temperature and observed energy.
+
+\begin{equation}
+    p_E(\{\mathbf{x}\} | T) = \frac{1}{Z} \exp \left\{ -\frac{1}{T} E(\{\mathbf{x}\}) \right\}
+\end{equation}
+Since $Z$ cannot be computed in a reasonable time for large systems, this distribution tells that a thermodynamic system favors lower energy states, especially at lower temperatures.
+This probility can be used to construct an acceptance probability for changing states as seen in eq. \ref{eq:acceptance}.
+By this definition negative Energy changes are always accepted, while positive are decreasingly unlikely with lower temperature.
+In combination with temperature variations this allows for efficient exploration of the phase space.
+\begin{equation}
+    \min \left( 1, \frac{p_E(x_2|T)}{p_E(x_1|T)} \right)
+    \label{eq:acceptance}
+\end{equation}
+
+\noindent In order to traverse the energy landscape, a appropriate change must be proposed.
+This is realized by taking a random subpath of the cities sequence by generating two random indeces $(a,b) != (1,N)$ and flipping it, as seen here: 
+\begin{align}
+    K: &\quad S_1, \dots, S_{a-1}, \underbrace{S_a, S_{a+1}, \dots, S_{b-1}, S_b}_{\textit{old}}, S_{b+1}, \dots, S_N \\
+    K': &\quad S_1, \dots, S_{a-1}, \underbrace{S_b, S_{b-1}, \dots, S_{a+1}, S_a}_{\textit{new}}, S_{b+1}, \dots, S_N 
+\end{align}
+
+\noindent The advantage of this proposal is that one can efficiently calculate the change in energy without iterating over the whole array:
+\begin{equation}
+    E(K') - E(K) = \overline{S_{a-1} S_b} + \overline{S_a S_{b+1}} - \overline{S_{a-1} S_a} - \overline{S_b S_{b+1}}
+\end{equation}
+
+\noindent By applying the changes and comparing a uniform generated number with the acceptance probability one can minimize the energy.
+If one chooses a appropriate temperature function, which changes the temperature input every sweep ($N^2$), local minima can be explored. 
+Even a global minima can be found, but this can not be verified even for relatively few cities.
+
+\subsection{Genetic Algorithm}
+This approach is derived from nature. 
+It simulates natural evolution of a population of individual cities sequences.
+As in nature there are steps of inheritance ,mutation and natural selection. 
+There are several ways to implement this concept and the used algorithm is a basic version with only the core steps.
+In this approach the cost function needs to be evaluated very often and the energy needs to be calculated in its entirety.
+At first a population from one path is created by shuffeling the path N times and saving the individuals.
+This ensures genetic diversity at the start.
+The following steps are implemented, which are done each iteration: \\
+\begin{itemize}
+    \item \textbf{Selection} \\ asdasd
+    \item \textbf{Reproduction}
+    \item \textbf{Mutation}
+\end{itemize}

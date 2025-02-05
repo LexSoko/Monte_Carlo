@@ -24,7 +24,7 @@ def change_pos(array, index1, index2):
     temparray[index1:index2+1] = subarray
     return temparray
 
-def calculate_energy(array):
+def calculate_energy1(array):
     shifted_array = np.roll(array,-1)
     delta = shifted_array - array
     energy = 0
@@ -32,6 +32,14 @@ def calculate_energy(array):
         energy += norm(d)
     return energy
 
+def calculate_energy(array):
+    
+    
+    shifted_array = np.roll(array, -1, axis=0)
+    delta = shifted_array - array
+    lenght = np.sum(np.sqrt(np.sum(delta**2, axis=1)))  # Vectorized computation
+    
+    return lenght
 def create_cities(N):
     city_pos = []
     city_dist = np.zeros((N,N))
@@ -233,12 +241,13 @@ if __name__ == '__main__':
     print(pathdata+"ch150.csv")
     cities = np.array(create_cities(50))
     cities = pd.read_csv(pathdata+"ch150.csv", delimiter=";")
+    #cities = pd.read_csv("bestpath7800.csv", delimiter=";")
     fig1, ax1  = plt.subplots(1,1)
     ax1.plot(   cities["x"],cities["y"])
     ax1.scatter(cities["x"],cities["y"], marker="+", c="r")
     plt.show()
     Energy = calculate_energy(np.array(cities))
-    
+    print(Energy)
     new_path, en = find_best_route(
         cities,
         10,
