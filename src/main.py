@@ -7,7 +7,6 @@ Every completed run is saved immediately as .npy files.
 
 from pathlib import Path
 from time import perf_counter
-
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
@@ -21,7 +20,7 @@ from tqdm import tqdm
 # ---------------------------------------------------------------------------
 
 SOLVER = "both"  # "annealing", "mixed", or "both"
-
+show_temp_func =True
 DATA_FILE = Path("data/dsj1000.csv")
 Set_name = str(DATA_FILE).split("\\")[-1].split(".")[0]
 print(Set_name)
@@ -30,17 +29,18 @@ OUTPUT_DIRECTORY = Path(f"../results/tsp_benchmark/{Set_name}")
 CSV_DELIMITER = ";"
 COORDINATE_COLUMNS = (0, 1)
 
-NUMBER_OF_RUNS = 10
-NUMBER_OF_SWEEPS = 800
+NUMBER_OF_RUNS = 8
+NUMBER_OF_SWEEPS = 200
 POPULATION_SIZE = 10
 
-INITIAL_TEMPERATURE = 1000
-COOLING_FACTOR = 0.7
+INITIAL_TEMPERATURE = 10000
+COOLING_FACTOR = 0.99
+COOLING_FACTOR_exp = 0.03
 BASE_RANDOM_SEED = 28041999
-PERIOD = 50
-FREQUENCY = 2*np.pi/PERIOD
+PERIOD = 5
+FREQUENCY = np.pi/PERIOD
 KNOWN_OPTIMUM = 18659688
-MINIMAL_CYCLE_TEMP = 200
+MINIMAL_CYCLE_TEMP = 800
 MAKE_PLOTS_FOR_EACH_RUN = True
 WARM_UP_NUMBA = True
 
@@ -58,9 +58,15 @@ def temperature_function(sweep, current_tour, current_length):
     signature expected by the current solver implementation.
     """
     return INITIAL_TEMPERATURE * COOLING_FACTOR**sweep
+@nb.njit(cache=True)
 def temperature_function_periodic(sweep,current_tour,current_lenght):
-    return INITIAL_TEMPERATURE*np.exp(COOLING_FACTOR*sweep)*(np.cos(FREQUENCY*sweep)+ MINIMAL_CYCLE_TEMP - COOLING_FACTOR*sweep)
-
+    return INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)*(np.cos(FREQUENCY*sweep)**2+ MINIMAL_CYCLE_TEMP*COOLING_FACTOR**sweep)
+@nb.njit(cache=True)
+def temperature_function_periodic2(sweep,current_tour,current_lenght):
+    return INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)*(np.cos(FREQUENCY*sweep)**2+ 1)
+@nb.njit(cache=True)
+def temperature_function_periodic3(sweep,current_tour,current_lenght):
+    return (INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)+MINIMAL_CYCLE_TEMP)*(np.cos(FREQUENCY*sweep)**2 + 1)
 @nb.njit(cache=True)
 def length_function(ordered_coordinates):
     """Closed-tour length using the rounded TSPLIB EUC_2D convention.
@@ -161,7 +167,7 @@ def save_aggregate_results(directory, histories, final_lengths, runtimes):
 # ---------------------------------------------------------------------------
 
 
-def run_annealing(coordinates, distance_matrix):
+def run_annealing(coordinates, distance_matrix, temp_func):
     """Run repeated independent annealing experiments."""
     output_directory = OUTPUT_DIRECTORY / "annealing"
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -172,7 +178,7 @@ def run_annealing(coordinates, distance_matrix):
     tour = coordinates.copy()
     starting_length = length_function(tour)#
     #starting_length = calculate_lenght(tour)    
-
+    
     N_cities = len(tour)
     tour_ids = np.arange(0,N_cities, dtype=np.int32)
     if WARM_UP_NUMBA:
@@ -180,7 +186,7 @@ def run_annealing(coordinates, distance_matrix):
         annealing_D(
             tour_ids,
             distance_matrix,
-            temperature_function,
+            temp_func,
             0,
             0,
         )
@@ -200,10 +206,11 @@ def run_annealing(coordinates, distance_matrix):
         final_tour, length_history, temperatures = annealing_D(
             tour_ids,
             distance_matrix,
-            temperature_function,
+            temp_func,
             starting_length,
             NUMBER_OF_SWEEPS,
         )
+        #INITIAL_TEMPERATURE = INITIAL_TEMPERATURE/(run_index+1)
         #print(final_tour,"finaltour")
         tour = tour[final_tour]
         tour_ids = final_tour.copy()
@@ -263,7 +270,7 @@ def run_annealing(coordinates, distance_matrix):
     }
 
 
-def run_mixed(coordinates, distance_matrix):
+def run_mixed(coordinates, distance_matrix, temp_func):
     """Run repeated independent mixed-population experiments."""
     output_directory = OUTPUT_DIRECTORY / "mixed"
     output_directory.mkdir(parents=True, exist_ok=True)
@@ -294,7 +301,7 @@ def run_mixed(coordinates, distance_matrix):
             Tour_id_matrix,
             distance_matrix,
             POPULATION_SIZE,
-            temperature_function,
+            temp_func,
             Lengths,
             0,
         )
@@ -308,11 +315,11 @@ def run_mixed(coordinates, distance_matrix):
             Tour_id_matrix,
             distance_matrix,
             POPULATION_SIZE,
-            temperature_function,
+            temp_func,
             Lengths,
             NUMBER_OF_SWEEPS,
         )
-
+        #INITIAL_TEMPERATURE = INITIAL_TEMPERATURE/(run_index+1)
         Tour_id_matrix = final_population.copy()
         print("Input dtype:", Tour_id_matrix.dtype)
         Lengths = length_history[-1]
@@ -403,6 +410,24 @@ def run_mixed(coordinates, distance_matrix):
 
 
 def main():
+    
+    if show_temp_func:
+        sweep = np.arange(NUMBER_OF_SWEEPS)
+        plt.plot(sweep, temperature_function_periodic3(sweep, 0 ,0 ))
+        plt.show()
+        plt.cla()
+        plt.plot(sweep, temperature_function_periodic2(sweep, 0 ,0 ))
+        plt.show()
+        plt.cla()
+        plt.plot(sweep, temperature_function_periodic(sweep, 0 ,0 ))
+        plt.show()
+        plt.cla()
+        plt.plot(sweep,temperature_function(sweep,0,0))
+        plt.show()
+        print("satisfied with the temp funcs? [y/n]\n")
+        x = input()
+        if x == "n":
+            exit()
     if SOLVER not in {"annealing", "mixed", "both"}:
         raise ValueError('SOLVER must be "annealing", "mixed", or "both"')
 
@@ -417,12 +442,13 @@ def main():
 
     annealing_results = None
     mixed_results = None
-
+    
+    
     if SOLVER == "annealing" or SOLVER == "both":
-        annealing_results = run_annealing(coordinates, distance_matrix)
+        annealing_results = run_annealing(coordinates, distance_matrix,temperature_function_periodic3)
 
     if SOLVER == "mixed" or SOLVER == "both":
-        mixed_results = run_mixed(coordinates, distance_matrix)
+        mixed_results = run_mixed(coordinates, distance_matrix,temperature_function_periodic3)
 
     if annealing_results is not None:
         print("\nAnnealing summary:")
@@ -456,7 +482,7 @@ def main():
             * n_cities**2
             * POPULATION_SIZE
         )
-
+        #annealing_x, mixed_x = np.log10(annealing_x), np.log10(mixed_x)
         figure, _ = pr.plot_comparison(
             annealing_results["histories"],
             mixed_results["histories"],
@@ -464,7 +490,7 @@ def main():
             x_a=annealing_x,
             x_b=mixed_x,
             optimum=KNOWN_OPTIMUM,
-            x_label="evaluated 2-opt proposals",
+            x_label="sweeps / N",
             title="Annealing versus mixed solver",
             save_path=OUTPUT_DIRECTORY / "solver_comparison.png",
         )

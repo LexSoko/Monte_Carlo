@@ -437,8 +437,44 @@ def _mean_std_curve(ax, x, histories, label, color):
     std = np.std(histories, axis=0)
     ax.plot(x, mean, color=color, linewidth=1.8, label=label)
     ax.fill_between(x, mean - std, mean + std, color=color, alpha=0.18)
+    ax.set_ylim(-1, max(mean))
 
 
 def _save(fig, save_path):
     if save_path is not None:
         fig.savefig(save_path, dpi=200, bbox_inches="tight")
+
+def one_temperature_history(temperatures):
+    """Convert the current solver temperature output to one curve."""
+    temperatures = np.asarray(temperatures)
+
+    if temperatures.ndim == 1:
+        return temperatures
+
+    # The current mixed solver stores the same temperature per population.
+    # Once that solver returns a 1D temperature array, this branch is unused.
+    return temperatures[:, -1]
+
+
+def plot_returned_tour(coordinates, returned_tour, title, save_path):
+    """Plot either city IDs or the reordered coordinates returned currently."""
+    returned_tour = np.asarray(returned_tour)
+
+    if returned_tour.ndim == 1:
+        return plot_tour(
+            coordinates,
+            returned_tour,
+            title=title,
+            save_path=save_path,
+        )
+
+    if returned_tour.ndim == 2 and returned_tour.shape[1] == 2:
+        city_ids = np.arange(returned_tour.shape[0])
+        return plot_tour(
+            returned_tour,
+            city_ids,
+            title=title,
+            save_path=save_path,
+        )
+
+    raise ValueError("The returned tour has an unsupported shape")
