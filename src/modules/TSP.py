@@ -225,6 +225,147 @@ def annealing_D(
         temperatures[-1] = temperatures[-2]
     return tour_ids, Lengths, temperatures
 
+@nb.njit(cache=True)
+def annealing_D_detailed(
+        tour_ids,
+        D,
+        temperature_function,
+        Length,
+        n_sweeps,
+        const_temp,
+        warm_up
+):
+    N_cities = len(tour_ids)
+    N_cities_sq = N_cities**2
+
+    Lengths = np.empty(n_sweeps + 1, dtype=np.float32)
+    Lengths[0] = Length
+
+    temperatures = np.empty(n_sweeps + 1, dtype=np.float32)
+
+    # Raw Markov-chain samples at every proposed move.
+    length_samples = np.empty(
+        (n_sweeps, N_cities_sq),
+        dtype=np.float64
+    )
+
+    # Quantities that can be compared with the exactly solved system.
+    mean_L = np.empty(n_sweeps, dtype=np.float64)
+    mean_L_squared = np.empty(n_sweeps, dtype=np.float64)
+    variance_L = np.empty(n_sweeps, dtype=np.float64)
+    heat_capacity = np.empty(n_sweeps, dtype=np.float64)
+
+    # Additional useful diagnostic.
+    acceptance_rate = np.empty(n_sweeps, dtype=np.float64)
+
+    for n in range(n_sweeps):
+        if const_temp >= 0.0:
+            if warm_up == True:
+                temperature = temperature_function(
+                    n,
+                    const_temp,
+                    Lengths[n],
+                    )
+            else:
+                temperature = const_temp
+        else:
+            temperature = temperature_function(
+            n,
+            const_temp,
+            Lengths[n],
+            )
+
+        current_L = Lengths[n]
+        accepted_moves = 0
+
+        sum_L = 0.0
+        sum_L_squared = 0.0
+
+        for k in range(N_cities_sq):
+            r1 = np.random.randint(0, N_cities)
+            r2 = np.random.randint(0, N_cities)
+
+            while r2 == r1:
+                r2 = np.random.randint(0, N_cities)
+
+            a = min(r1, r2)
+            b = max(r1, r2)
+
+            if a == 0 and b == N_cities - 1:
+                
+                #length_samples[n, k] = current_L
+                #um_L += current_L
+                #sum_L_squared += current_L * current_L
+                continue
+
+            id_a_minus_one = tour_ids[(a - 1) % N_cities]
+            id_a = tour_ids[a]
+            id_b_plus_one = tour_ids[(b + 1) % N_cities]
+            id_b = tour_ids[b]
+
+            dL = (
+                D[id_a_minus_one, id_b]
+                - D[id_a_minus_one, id_a]
+                + D[id_b_plus_one, id_a]
+                - D[id_b_plus_one, id_b]
+            )
+
+            U = np.random.random()
+
+            accept = dL <= 0.0
+
+            if not accept and temperature > 0.0:
+                accept = U < np.exp(-dL / temperature)
+
+            if accept:
+                current_L = current_L + dL
+                tour_ids = reverse_subsequence(tour_ids, a, b)
+                accepted_moves += 1
+
+            
+            #length_samples[n, k] = current_L
+
+            sum_L += current_L
+            sum_L_squared += current_L * current_L
+
+        #mean_L[n] = sum_L / N_cities_sq
+        #mean_L_squared[n] = sum_L_squared / N_cities_sq
+
+        #variance = (
+        #    mean_L_squared[n]
+        #    - mean_L[n] * mean_L[n]
+        #)
+
+       
+        #if variance < 0.0 and variance > -1e-10:
+        #    variance = 0.0
+
+        #variance_L[n] = variance
+
+        #if temperature > 0.0:
+        #    heat_capacity[n] = variance / (temperature * temperature)
+        #else:
+        #    heat_capacity[n] = np.nan
+
+        acceptance_rate[n] = accepted_moves / N_cities_sq
+
+        Lengths[n + 1] = current_L
+        temperatures[n] = temperature
+
+    if n_sweeps != 0:
+        temperatures[-1] = temperatures[-2]
+
+    return (
+        tour_ids,
+        Lengths,
+        temperatures,
+        length_samples,
+        mean_L,
+        mean_L_squared,
+        variance_L,
+        heat_capacity,
+        acceptance_rate,
+    )
 
 @nb.njit
 def mutation_genetic(
