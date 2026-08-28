@@ -11,7 +11,7 @@ repeated histories: (n_runs, n_records)
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
-
+import os
 
 # Functions that can be called inside @nb.njit solver functions.
 
@@ -478,3 +478,56 @@ def plot_returned_tour(coordinates, returned_tour, title, save_path):
         )
 
     raise ValueError("The returned tour has an unsupported shape")
+
+
+def plot_quantities2(fig,ax,data,temp,colums, path, t_lims,tsp = False ,save = True, add_info = "plot"):
+    i = 0
+    if colums[0] == "$T$":
+        i = 1
+    for d in range(0,len(data)):
+        if data[d][0] == None:
+            continue
+        ax[d].plot(temp,data[d], label=colums[d+i])
+        if tsp == True and colums[d+1] == r"$\langle L \rangle_T$ (TSP)":
+            ax[d].fill_between(temp,data[d], data[d]- np.sqrt(data[d+1]),data[d]+  np.sqrt(data[d+1]), label= r"$ 1\sigma$")
+
+        ax[d].legend()
+        ax[d].set_xlabel(colums[0])
+        ax[d].grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    if save:
+        fig.savefig(os.path.join(path,f"solved_system_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}_{add_info}.pdf"))
+    return fig,ax
+
+
+
+
+
+def plot_quantity(
+        x,
+        y,
+        dy = None,
+        labels = ["T","func"],
+        path = "",
+        save = True,
+        add_info = "",
+        fig = None,
+        ax = None,
+        twinx = False
+        ):
+    if fig != None:
+        fig, ax = plt.subplots(1,1)
+
+    if twinx:
+        axtwin = ax.twinx()
+        ax = axtwin
+    ax.plot(x,y, label = labels[1])
+    ax.set_xlabel(labels[0])
+    ax.grid(axis="y", alpha=0.25)
+    if dy != None:
+        ax.fill_between(x, y -dy , y + dy, label = r"$1\sigma$")
+    fig.tight_layout()
+    if save:
+        fig.savefig(os.path.join(path,f"solved_system_{add_info}.pdf"))
+
+    return fig, ax

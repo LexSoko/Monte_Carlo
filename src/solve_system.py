@@ -6,8 +6,8 @@ import numba as nb
 import os 
 import math
 from tqdm import tqdm
+from time import perf_counter
 tsp.seed_numba(30121999)
-
 
 @nb.njit()
 def permutations2(A, k):
@@ -30,15 +30,15 @@ def calculate_total_distance_with_D(D, tour_ids):
     return total_lenght
 
 @nb.njit
-def solve_system(perm,D_matrix,temperatures):
+def solve_system(perm,D_matrix,temperatures, dtype = np.float64):
     perm_array = perm
     N_configs = len(perm_array)
-    all_lenghts = np.empty(N_configs, dtype=np.float32)
+    all_lenghts = np.empty(N_configs, dtype=dtype)
     for i, perm in enumerate(perm_array):
         all_lenghts[i] = calculate_total_distance_with_D(D_matrix,perm)
-    partition__func = np.empty(temperatures.shape, dtype=np.float32)
-    expectation_value = np.empty(temperatures.shape, dtype=np.float32)
-    expectation_value_L_sq = np.empty(temperatures.shape, dtype=np.float32)
+    partition__func = np.empty(temperatures.shape, dtype=dtype)
+    expectation_value = np.empty(temperatures.shape, dtype=dtype)
+    expectation_value_L_sq = np.empty(temperatures.shape, dtype=dtype)
     for k, t in enumerate(temperatures):
         partion = 0 
         weight_sum_expect = 0
@@ -59,8 +59,9 @@ def temp_func_const(n, ids, Length):
     return 1
 @nb.njit
 def temp_func_warmup(n,ids,lenght):
-    return 1000*(1/(n+1)) + ids 
-def solve_system_with_TSP(tours_ids,D,temperatures, nsweeps, warmup =1500):
+    return 2000*(1/(n+1)*4) + ids 
+
+def solve_system_with_TSP(tours_ids,D,temperatures, nsweeps, warmup =1500,detailed = False):
     nsweeps = nsweeps- warmup
     N_cities = len(tours_ids)**2
     N_cities = int(N_cities)
@@ -74,7 +75,7 @@ def solve_system_with_TSP(tours_ids,D,temperatures, nsweeps, warmup =1500):
     lenght = calculate_total_distance_with_D(D,tours_ids)
     #warmup_sweep
     
-    
+    print(f"total expected iterations = {len(temperatures)}")
     
     for n,t in tqdm(enumerate(temperatures),desc="solving with TSP"):
         tours_ids_1,_, _,_, _,_, _, _, _ = tsp.annealing_D_detailed(
@@ -84,7 +85,8 @@ def solve_system_with_TSP(tours_ids,D,temperatures, nsweeps, warmup =1500):
                 lenght,
                 warmup,
                 const_temp=t,
-                warm_up=True
+                warm_up=True,
+                detailed=detailed
             )
         lenght = calculate_total_distance_with_D(D,tours_ids_1)
         #temp_func_const = make_temp_func_const(t)
@@ -96,7 +98,8 @@ def solve_system_with_TSP(tours_ids,D,temperatures, nsweeps, warmup =1500):
             lenght,
             nsweeps,
             const_temp=t,
-            warm_up=False
+            warm_up=False,
+            detailed=detailed
 
         )
         
@@ -109,26 +112,27 @@ def solve_system_with_TSP(tours_ids,D,temperatures, nsweeps, warmup =1500):
         acceptance_rate[n] =accept
 
     data1 = [
+        temperatures,
         Lengths_T,
-        Length_samples_T,
         acceptance_rate,
-        temperatures
+        
     ]
     data2=    [mean_L_T,
         variance_L_T,
         heat_capacity,
         mean_L_sq_T,
+        Length_samples_T
         ]
     return data1,data2
 
 
-def save_to_file_system_solved(data,columns, results_path, temp_disc):
+def save_to_file_system_solved(data,columns, results_path, temp_disc, add_info = "gen", dtype = np.float64):
     header = ""
     for c in columns:
         header += f"{c};"
     header = header[:-1]
     np.savetxt(
-        os.path.join(results_path,f"solved_system_data_{temp_disc[0]}_{temp_disc[1]}_{temp_disc[2]}.csv"),
+        os.path.join(results_path,f"solved_system_data_{temp_disc[0]}_{temp_disc[1]}_{temp_disc[2]}_{add_info}.csv"),
         data,
         delimiter=";",
         header=header
@@ -140,7 +144,9 @@ def solve_system_from_permutations(
         t_lims,
         results_path, 
         temperature = None,
-        seed=30121999
+        seed=30121999,
+        add_info= "gen",
+        dtype = np.float64
         ):
     N_cities = len(tour_ids)
     expected_perm = math.factorial(N_cities-1)/2
@@ -165,11 +171,11 @@ def solve_system_from_permutations(
         t_lims[0],
         t_lims[1],
         t_lims[2],
-        dtype=np.float64,
+        dtype=dtype,
         )
     else:
         temperatures = np.atleast_1d(
-        np.asarray(temperature, dtype=np.float64)
+        np.asarray(temperature, dtype=dtype)
         )
        
     print(f"solved system N={len(perm)}")
@@ -182,14 +188,15 @@ def solve_system_from_permutations(
             "L_sq",
         ]
 
-    if not os.path.exists(os.path.join(results_path,f"solved_system_data_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}.csv")):
+    if not os.path.exists(os.path.join(results_path,f"solved_system_data_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}_{add_info}.csv")):
         print("didnt find a file, calculating manually")
         
         
         partition_func, expectation_value, expectation_value_L_sq = solve_system(
             perm,
             D,
-            temperatures=temperatures
+            temperatures=temperatures,
+            dtype=dtype
             )
 
         variance =expectation_value_L_sq-expectation_value**2
@@ -203,15 +210,15 @@ def solve_system_from_permutations(
         heat_cap,
         expectation_value_L_sq,
         ))
-        save_to_file_system_solved(data,colums,results_path, t_lims)
+        save_to_file_system_solved(data,colums,results_path, t_lims,dtype=dtype,add_info=add_info)
     else:
         print("loading from data")
-        data = np.loadtxt(os.path.join(results_path,f"solved_system_data_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}.csv"),delimiter=";",skiprows=1)
+        data = np.loadtxt(os.path.join(results_path,f"solved_system_data_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}_{add_info}.csv"),delimiter=";",skiprows=1,dtype=dtype )
     print(data)
     data = data.T
     return data 
 
-def plot_quantities(fig,ax,data,temp,colums, path, t_lims,tsp=False):
+def plot_quantities(fig,ax,data,temp,colums, path, t_lims,tsp=False ,save = False):
     i=0
     if tsp == True:
         i=1
@@ -224,15 +231,61 @@ def plot_quantities(fig,ax,data,temp,colums, path, t_lims,tsp=False):
         ax[d].set_xlabel(colums[0])
         ax[d].grid(axis="y", alpha=0.25)
     fig.tight_layout()
-    fig.savefig(os.path.join(path,f"solved_system_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}.pdf"))
+    if save:
+        fig.savefig(os.path.join(path,f"solved_system_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}.pdf"))
+    return fig,ax
+
+
+def plot_quantities2(fig,ax,data,temp,colums, path, t_lims,tsp = False ,save = True, add_info = "plot", fmt = "b"):
+   
+    for d in range(0,len(data)):
+        if np.isnan(data[d, 0]):
+            continue
+        ax[d].plot(temp,data[d],fmt, label=colums[d+1])
+        if tsp == True and colums[d+1] == r"$\langle L \rangle_T$ (TSP)":
+            ax[d].fill_between(temp, data[d]- np.sqrt(data[d+1]),data[d]+  np.sqrt(data[d+1]), label= r"$ 1\sigma$", alpha= 0.3)
+
+        ax[d].legend()
+        ax[d].set_xlabel(colums[0])
+        ax[d].grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    if save:
+        fig.savefig(os.path.join(path,f"solved_system_{t_lims[0]}_{t_lims[1]}_{t_lims[2]}_{add_info}.pdf"))
     return fig,ax
 
 
 
 
 
+def plot_quantity(
+        x,
+        y,
+        dy = [None],
+        labels = ["T","func"],
+        path = "",
+        save = True,
+        add_info = "",
+        fig = None,
+        ax = None,
+        twinx = False
+        ):
+    if fig == None and ax == None:
+        fig, ax = plt.subplots(1,1)
 
+    if twinx:
+        axtwin = ax.twinx()
+        ax = axtwin
+    ax.plot(x,y, label = labels[1])
+    ax.set_xlabel(labels[0])
+    ax.grid(axis="y", alpha=0.25)
+    ax.legend()
+    if dy[0] != None:
+        ax.fill_between(x, y -dy , y + dy, label = r"$1\sigma$", alpha = 0.3)
+    fig.tight_layout()
+    if save:
+        fig.savefig(os.path.join(path,f"solved_system_{add_info}.pdf"))
 
+    return fig, ax
 
 
 
@@ -380,7 +433,7 @@ def main():
                 0.01
                 )
     temperatures = np.arange(t_lims[0],t_lims[1], t_lims[2], dtype=np.float64)
-    data  = solve_system_from_permutations(
+    data_solve  = solve_system_from_permutations(
         perm_path,
         tour_ids,
         D,
@@ -388,25 +441,33 @@ def main():
         results_path,
         temperature=temperatures
     )
-    data_rel = data[1:]
+    data_rel = data_solve[1:]
+
     
     temp = np.arange(t_lims[0],t_lims[1],t_lims[2])
     data_TSP1,data_TSP_plots = solve_system_with_TSP(
         tour_ids,
         D,
         np.arange(t_lims[0],t_lims[1],t_lims[2],dtype=np.float64),
-        10000
+        10000,
+        warmup=2000,
+        detailed=False
     )
-    L = data_TSP1[0]
 
-    data = np.array([
+    L = data_TSP1[1]
+
+    data_tsp_calc = np.array([
+        temp,
+        np.full(temp.shape, np.nan),
         np.mean(L,axis=1),
         np.mean(L**2, axis=1)-np.mean(L,axis=1)**2,
         (np.mean(L**2, axis=1)-np.mean(L,axis=1)**2)/temperatures**2,
         np.mean(L**2, axis=1)
 
     ])
-    data_TSP_plots = np.array(data_TSP_plots)
+   
+    
+
     colums_tsp = [
                 r"$T$ (TSP)",
                 r"$Z(T)$ (TSP)",
@@ -415,6 +476,41 @@ def main():
                 r"$C(T)$ (TSP)",
                 r"$\langle L^2 \rangle_T$ (TSP)",
             ]
+    colums_TSP_data = [
+                "T",
+                "Z(T)",
+                "L_mean",
+                "var",
+                "C(T)",
+                "L_sq",
+            ]
+    colums_metadata = [
+        "T",
+        "accept_mean"
+    ]
+
+    data_tsp_save = data_tsp_calc.T
+    save_to_file_system_solved(
+        data_tsp_save,
+        colums_TSP_data,
+        results_path,
+        t_lims,
+        add_info="TSP"
+        )
+    
+    metadata_TSP_mean = np.mean(data_TSP1[-1], axis=1)
+    metadata_TSP_mean = np.column_stack([temp, metadata_TSP_mean])
+    
+    save_to_file_system_solved(
+        metadata_TSP_mean,
+        colums_metadata,
+        results_path,
+        t_lims,
+        add_info="TSP_metadata"
+    )
+    metadata_TSP_mean = metadata_TSP_mean.T
+
+
     colums = [
                     r"$T$",
                     r"$Z(T)$",
@@ -427,17 +523,18 @@ def main():
     fig, ax = plt.subplots(len(data_rel),figsize=(8,10))
     
     
-    fig, ax = plot_quantities(
+    fig, ax = plot_quantities2(
         fig,
         ax,
-        data,
+        data_tsp_calc[1:],
         temp,
         colums_tsp,
         plots_path,
-        (9,1,2),
-        tsp=True
+        t_lims=t_lims,
+        tsp=True,
+
     )
-    fig, ax = plot_quantities(
+    fig, ax = plot_quantities2(
             fig,
             ax,
             data_rel,
@@ -447,6 +544,99 @@ def main():
             t_lims
         )
     plt.show()
+
+    plt.cla()
+
+    fig1, ax1 = plot_quantity(
+        metadata_TSP_mean[0],
+        metadata_TSP_mean[1],
+        dy = np.var(metadata_TSP_mean[1]),
+        labels=[colums[0], r"$\langle A \rangle_T$"],
+        path=results_path,
+        add_info="acceptance",
+        save=True
+
+    )
+
+    
+def plotting():
+
+    results_path = os.path.join("..","results","solve_system_N11")
+    plots_path = os.path.join(results_path,"plots")
+    perm_path = os.path.join(results_path,"permutation.npy")
+
+    data_solved = np.loadtxt(os.path.join(results_path,"solved_system_data_0.5_50_0.01_gen.csv"),skiprows=1,delimiter=";").T
+    data_TSP = np.loadtxt(os.path.join(results_path,"solved_system_data_0.5_50_0.01_TSP.csv"),skiprows=1,delimiter=";").T
+    metadata_TSP_mean = np.loadtxt(os.path.join(results_path,"solved_system_data_0.5_50_0.01_TSP_metadata.csv"),skiprows=1,delimiter=";").T
+
+    temp = data_solved[0]
+    data_tsp_calc = data_TSP[1:]
+    data_rel = data_solved[1:]
+    
+
+    t_lims = (
+                    0.5,
+                    50, 
+                    0.01
+                    )
+    
+    colums_tsp = [
+                    r"$T$ (TSP)",
+                    r"$Z(T)$ (TSP)",
+                    r"$\langle L \rangle_T$ (TSP)",
+                    r"$\langle L^2 \rangle_T - \langle L \rangle_T^2 $ (TSP)",
+                    r"$C(T)$ (TSP)",
+                    r"$\langle L^2 \rangle_T$ (TSP)",
+                ]
+    colums = [
+                        r"$T$",
+                        r"$Z(T)$",
+                        r"$\langle L \rangle_T$",
+                        r"$\langle L^2 \rangle_T - \langle L \rangle_T^2 $",
+                        r"$C(T)$",
+                        r"$\langle L^2 \rangle_T$",
+                    ]
+            
+    fig, ax = plt.subplots(len(data_rel),figsize=(8,10))
+    
+    
+    fig, ax = plot_quantities2(
+        fig,
+        ax,
+        data_tsp_calc,
+        temp,
+        colums_tsp,
+        plots_path,
+        t_lims=t_lims,
+        tsp=True,
+
+    )
+    fig, ax = plot_quantities2(
+            fig,
+            ax,
+            data_rel,
+            temp,
+            colums,
+            plots_path,
+            t_lims,
+            fmt="r--",
+            save=True
+        )
+    plt.show()
+
+    plt.cla()
+
+    fig1, ax1 = plot_quantity(
+        metadata_TSP_mean[0],
+        metadata_TSP_mean[1],
+        dy = np.var(metadata_TSP_mean[1]),
+        labels=[colums[0], r"$\langle A \rangle_T$"],
+        path=results_path,
+        add_info="acceptance",
+        save=True
+
+    )
+
     
     
 
@@ -455,5 +645,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    #main()
+    plotting()
     

@@ -7,27 +7,11 @@ from time import perf_counter
 import modules.plotForReport as pr
 from warnings import deprecated
 from tqdm import tqdm
-import time 
-
-
-
-
-
-@nb.njit(cache=True)
-def benchmark_temperature_function(
-        sweep,
-        state,
-        length,
-):
-    return np.float64(1000.0)
-
-
 
 @nb.njit(cache=True)
 def seed_numba(seed):
     """Seed Numba's random-number generator."""
     np.random.seed(seed)
-
 def converge_critiria_true(best_histories):
     """Dummy stopping criterion.
 
@@ -43,31 +27,9 @@ def create_cities(N, low= -10, high= 10, seed = 12345):
         x = np.random.randint(low=low,high=high) + np.random.normal(loc=0, scale= np.sqrt(np.abs(high)/2)) 
         y = np.random.randint(low=low,high=high) + np.random.normal(loc=0, scale= np.sqrt(np.abs(high)/2))
         city_pos.append(np.array([x,y]))
-    return np.array(city_pos, dtype=np.float64)
-
-@nb.njit(inline='always', cache=True)
-def calculate_total_distance_with_D(D, tour_ids):
-    total_lenght = 0
-    N_cities = len(tour_ids)
-    for i in range(N_cities):
-        total_lenght += D[tour_ids[i],tour_ids[(i+1)%N_cities]]
-    return total_lenght
-
+    return np.array(city_pos)
 def create_tour_ids(tour):
     return np.arange(0,len(tour), dtype=np.int32)
-@nb.njit(cache=True)
-def create_tour_id_matrix(tours_ids,population_size):
-    N_cities = len(tours_ids)
-    
-    Tour_ID_Matrix = np.empty(
-        (population_size, N_cities),
-        dtype=np.int32
-    )
-
-    for p in range(population_size):
-        Tour_ID_Matrix[p] = tours_ids.copy()
-    return Tour_ID_Matrix
-
 @nb.njit
 def calculate_lenghts(
         arrays, 
@@ -147,7 +109,7 @@ def make_loop(new_path):
     return np.array([x,y])
 
 
-@nb.njit(inline='always', cache=True)
+@nb.njit(inline='always')
 def reverse_subsequence(city_ids, a , b):
 
     while a < b:
@@ -159,7 +121,7 @@ def reverse_subsequence(city_ids, a , b):
     return city_ids
 
 @nb.njit
-def create_diversity_ids(Tour_ID_Matrix,specific_population_members):
+def create_diversity_ids(Tour_ID_Matrix:np.ndarray,specific_population_members = [-1]):
     Tour_ID_Matrix_shuffled = np.empty(Tour_ID_Matrix.shape, dtype= Tour_ID_Matrix.dtype)
     for n, tour in enumerate(Tour_ID_Matrix):
         tour_shuffled = tour.copy()
@@ -175,7 +137,7 @@ def create_diversity_ids(Tour_ID_Matrix,specific_population_members):
     return Tour_ID_Matrix_shuffled    
 
 
-@nb.njit(inline='always', cache=True)
+@nb.njit(inline='always')
 def annealing_step_Dmatrix(tour_ids,D,temperature,N_cities,Length):
     r1 = np.random.randint(0, N_cities)
     r2 = np.random.randint(0, N_cities)
@@ -440,7 +402,7 @@ def choose_survivors_ids(old_generation,lenghts,population_size, N_cities):
     np.random.shuffle(indeces)
     old_generation = old_generation[indeces]
     lenghts = lenghts[indeces]
-    survivor_lengths = np.empty((mid,N_cities), dtype=np.float64)
+    survivor_lengths = np.empty(mid, dtype=np.float64)
     survivors = np.empty((mid,N_cities),dtype=np.int32)
     for i in range(mid):
         if lenghts[i] < lenghts[i + mid]:
@@ -452,7 +414,7 @@ def choose_survivors_ids(old_generation,lenghts,population_size, N_cities):
    
     return survivors , survivor_lengths
 
-@nb.njit(inline='always', cache=True)
+@nb.njit(inline='always')
 def mate_ids(survivors, N_cities,  D_matrix):
     """
     the kinky part of the algorithm
@@ -519,16 +481,16 @@ def mate_ids(survivors, N_cities,  D_matrix):
 
 
 
-@nb.njit(parallel=True, cache=True)
+@nb.njit(parallel=True)
 def mixed_annealing_D(
-        Tour_ID_Matrix,
+        Tour_id_matrix,
         D,
         population_size,
         temperature_function,
         Lengths_0,
         n_sweeps
 ):
-    N_cities = Tour_ID_Matrix.shape[1]
+    N_cities = Tour_id_matrix.shape[1]
     N_cities_sq = N_cities**2
     
 
@@ -544,18 +506,18 @@ def mixed_annealing_D(
     for n in range(n_sweeps):
         temperature = temperature_function(
             n,
-            Tour_ID_Matrix,
+            Tour_id_matrix,
             Lengths[n,0]
             )
         
         current_lengths = Lengths[n].copy()
         survivors, survivor_lengths = choose_survivors_ids(
-                    Tour_ID_Matrix,
+                    Tour_id_matrix,
                     current_lengths,
                     population_size,
                     N_cities
                     )
-        Tour_ID_Matrix, new_generation_length = mate_ids(
+        Tour_id_matrix, new_generation_length = mate_ids(
             survivors,
             N_cities,
             D
@@ -565,8 +527,8 @@ def mixed_annealing_D(
             current_L = current_lengths[p]
             for _ in range(N_cities_sq):
             
-                Tour_ID_Matrix[p], current_L =annealing_step_Dmatrix(
-                    Tour_ID_Matrix[p],
+                Tour_id_matrix[p], current_L =annealing_step_Dmatrix(
+                    Tour_id_matrix[p],
                     D,
                     temperature,
                     N_cities,
@@ -579,18 +541,18 @@ def mixed_annealing_D(
     if n_sweeps != 0:
         temperatures[-1] = temperatures[-2]
     
-    return Tour_ID_Matrix,Lengths, temperatures
+    return Tour_id_matrix,Lengths, temperatures
 
 @nb.njit(parallel=True)
 def mixed_annealing_D_after(
-        Tour_ID_matrix,
+        Tour_id_matrix,
         D,
         population_size,
         temperature_function,
         Lengths_0,
         n_sweeps
 ):
-    N_cities = Tour_ID_matrix.shape[1]
+    N_cities = Tour_id_matrix.shape[1]
     N_cities_sq = N_cities**2
     
 
@@ -606,7 +568,7 @@ def mixed_annealing_D_after(
     for n in range(n_sweeps):
         temperature = temperature_function(
             n,
-            Tour_ID_matrix,
+            Tour_id_matrix,
             Lengths[n,0]
             )
         
@@ -615,8 +577,8 @@ def mixed_annealing_D_after(
             current_L = current_lengths[p]
             for _ in range(N_cities_sq):
             
-                Tour_ID_matrix[p], current_L =annealing_step_Dmatrix(
-                    Tour_ID_matrix[p],
+                Tour_id_matrix[p], current_L =annealing_step_Dmatrix(
+                    Tour_id_matrix[p],
                     D,
                     temperature,
                     N_cities,
@@ -624,12 +586,12 @@ def mixed_annealing_D_after(
                     )
             current_lengths[p] = current_L
         survivors, survivor_lengths = choose_survivors_ids(
-            Tour_ID_matrix,
+            Tour_id_matrix,
             current_lengths,
             population_size,
             N_cities
             )
-        Tour_ID_matrix, new_generation_length = mate_ids(
+        Tour_id_matrix, new_generation_length = mate_ids(
             survivors,
             N_cities,
             D
@@ -639,127 +601,467 @@ def mixed_annealing_D_after(
     if n_sweeps != 0:
         temperatures[-1] = temperatures[-2]
     
-    return Tour_ID_matrix,Lengths, temperatures
+    return Tour_id_matrix,Lengths, temperatures
+
+
+@nb.njit(cache=True)
+def _mixed_population_statistics(tour_population, lengths):
+    """Statistics used by mixed_annealing_D_detailed."""
+    population_size = lengths.size
+    best_index = 0
+    best_length = float(lengths[0])
+    mean_length = 0.0
+
+    for p in range(population_size):
+        value = float(lengths[p])
+        mean_length += value
+        if value < best_length:
+            best_length = value
+            best_index = p
+
+    mean_length /= population_size
+
+    variance_length = 0.0
+    for p in range(population_size):
+        difference = float(lengths[p]) - mean_length
+        variance_length += difference * difference
+    variance_length /= population_size
+
+    return best_length, mean_length, variance_length, best_index
+
+
+@nb.njit(cache=True)
+def _mixed_edge_diversity(tour_population, best_index):
+    """Mean undirected-edge difference from the current best tour."""
+    population_size, n_cities = tour_population.shape
+    if population_size <= 1:
+        return 0.0
+
+    neighbours = np.empty((n_cities, 2), dtype=np.int64)
+    best_tour = tour_population[best_index]
+
+    for i in range(n_cities):
+        city = best_tour[i]
+        neighbours[city, 0] = best_tour[(i - 1) % n_cities]
+        neighbours[city, 1] = best_tour[(i + 1) % n_cities]
+
+    diversity_sum = 0.0
+    for p in range(population_size):
+        if p == best_index:
+            continue
+
+        shared_edges = 0
+        candidate = tour_population[p]
+        for i in range(n_cities):
+            city_a = candidate[i]
+            city_b = candidate[(i + 1) % n_cities]
+            if (
+                city_b == neighbours[city_a, 0]
+                or city_b == neighbours[city_a, 1]
+            ):
+                shared_edges += 1
+
+        diversity_sum += 1.0 - shared_edges / n_cities
+
+    return diversity_sum / (population_size - 1)
+
+
+@nb.njit(cache=True)
+def _same_cycle(tour_a, tour_b):
+    """Return True for cycles equal up to rotation and reversal."""
+    n_cities = tour_a.size
+    start = -1
+
+    for i in range(n_cities):
+        if tour_b[i] == tour_a[0]:
+            start = i
+            break
+
+    if start < 0:
+        return False
+
+    same_forward = True
+    same_reverse = True
+    for i in range(n_cities):
+        if tour_a[i] != tour_b[(start + i) % n_cities]:
+            same_forward = False
+        if tour_a[i] != tour_b[(start - i) % n_cities]:
+            same_reverse = False
+        if not same_forward and not same_reverse:
+            return False
+
+    return same_forward or same_reverse
+
+
+@nb.njit(cache=True)
+def _mixed_unique_cycle_fraction(tour_population):
+    """Fraction of tours that are unique up to rotation and reversal."""
+    population_size = tour_population.shape[0]
+    unique_count = 0
+
+    for p in range(population_size):
+        is_unique = True
+        for q in range(p):
+            if _same_cycle(tour_population[p], tour_population[q]):
+                is_unique = False
+                break
+        if is_unique:
+            unique_count += 1
+
+    return unique_count / population_size
+
 
 @nb.njit(parallel=True, cache=True)
-def mixed_annealing_D_const_T(
-        Tour_ID_matrix,
+def _mixed_annealing_D_detailed_core(
+        Tour_id_matrix,
         D,
         population_size,
         temperature_function,
         Lengths_0,
         n_sweeps,
-        mutations_per_sweep,
         const_temp,
         warm_up,
-        detailed
+        detailed,
+        record_every,
 ):
-    N_cities = Tour_ID_matrix.shape[1]
+    """JIT-compiled implementation; use mixed_annealing_D_detailed."""
+    N_cities = Tour_id_matrix.shape[1]
+    N_cities_sq = N_cities * N_cities
+    proposals_per_sweep = population_size * N_cities_sq
 
+    # This is the ordinary mixed-solver output.  It is intentionally retained:
+    # for one temperature it is small and it lets callers inspect every member.
     Lengths = np.empty(
         (n_sweeps + 1, population_size),
-        dtype=np.float32
+        dtype=np.float64,
     )
     Lengths[0] = Lengths_0
+    temperatures = np.empty(n_sweeps + 1, dtype=np.float64)
 
-    temperatures = np.empty(n_sweeps + 1, dtype=np.float32)
-    acceptance_rate = np.empty((n_sweeps,population_size), dtype=np.float64)
-    accepted_population = np.empty(population_size, dtype=np.int64)
+    # Markov-state moments are accumulated online.  The raw array would have
+    # shape (n_sweeps, population_size, N_cities**2) and is not allocated.
+    mean_L = np.empty(n_sweeps, dtype=np.float64)
+    mean_L_squared = np.empty(n_sweeps, dtype=np.float64)
+    variance_L = np.empty(n_sweeps, dtype=np.float64)
+    heat_capacity = np.empty(n_sweeps, dtype=np.float64)
+    acceptance_rate = np.empty(n_sweeps, dtype=np.float64)
+
+    if detailed:
+        n_records = 1 + (n_sweeps + record_every - 1) // record_every
+    else:
+        n_records = 0
+
+    recorded_sweeps = np.empty(n_records, dtype=np.int64)
+    population_lengths = np.empty(
+        (n_records, population_size), dtype=np.float64
+    )
+    member_acceptance_rate = np.empty(
+        (n_records, population_size), dtype=np.float64
+    )
+    best_length = np.empty(n_records, dtype=np.float64)
+    mean_population_length = np.empty(n_records, dtype=np.float64)
+    variance_population_length = np.empty(n_records, dtype=np.float64)
+    edge_diversity = np.empty(n_records, dtype=np.float64)
+    unique_cycle_fraction = np.empty(n_records, dtype=np.float64)
+    best_so_far = np.empty(n_records, dtype=np.float64)
+    crossover_delta_mean = np.empty(n_records, dtype=np.float64)
+    annealing_delta_mean = np.empty(n_records, dtype=np.float64)
+    improved_fraction = np.empty(n_records, dtype=np.float64)
+
+    record_index = 0
+    running_best = float(Lengths_0[0])
+
+    if detailed:
+        initial_best, initial_mean, initial_variance, initial_best_index = (
+            _mixed_population_statistics(Tour_id_matrix, Lengths_0)
+        )
+        running_best = initial_best
+        recorded_sweeps[0] = 0
+        population_lengths[0] = Lengths_0
+        member_acceptance_rate[0] = np.nan
+        best_length[0] = initial_best
+        mean_population_length[0] = initial_mean
+        variance_population_length[0] = initial_variance
+        edge_diversity[0] = _mixed_edge_diversity(
+            Tour_id_matrix, initial_best_index
+        )
+        unique_cycle_fraction[0] = _mixed_unique_cycle_fraction(
+            Tour_id_matrix
+        )
+        best_so_far[0] = running_best
+        crossover_delta_mean[0] = np.nan
+        annealing_delta_mean[0] = np.nan
+        improved_fraction[0] = np.nan
+        record_index = 1
+
+    member_sample_sum = np.empty(population_size, dtype=np.float64)
+    member_sample_sum_squared = np.empty(
+        population_size, dtype=np.float64
+    )
+    member_accepted = np.empty(population_size, dtype=np.int64)
+    mated_lengths = np.empty(population_size, dtype=np.float64)
 
     for n in range(n_sweeps):
         if const_temp >= 0.0:
             if warm_up:
                 temperature = temperature_function(
-                    n,
-                    const_temp,
-                    Lengths[n]
+                    n, const_temp, Lengths[n, 0]
                 )
             else:
                 temperature = const_temp
         else:
             temperature = temperature_function(
-                n,
-                const_temp,
-                Lengths[n]
+                n, const_temp, Lengths[n, 0]
             )
 
-        survivors, survivor_lengths = choose_survivors_ids(
-            Tour_ID_matrix,
+        previous_mean = 0.0
+        for p in range(population_size):
+            previous_mean += Lengths[n, p]
+        previous_mean /= population_size
+
+        survivors, _ = choose_survivors_ids(
+            Tour_id_matrix,
             Lengths[n].copy(),
             population_size,
-            N_cities
-        )
-        Tour_ID_matrix, current_lengths = mate_ids(
-            survivors,
             N_cities,
-            D
         )
+        Tour_id_matrix, new_generation_lengths = mate_ids(
+            survivors, N_cities, D
+        )
+        mated_lengths[:] = new_generation_lengths
 
         for p in nb.prange(population_size):
-            current_L = current_lengths[p]
-            accepted_moves = 0
+            current_L = mated_lengths[p]
+            local_sum = 0.0
+            local_sum_squared = 0.0
+            local_accepted = 0
+            tour = Tour_id_matrix[p]
 
-            for _ in range(mutations_per_sweep):
+            for _ in range(N_cities_sq):
                 r1 = np.random.randint(0, N_cities)
                 r2 = np.random.randint(0, N_cities)
-
                 while r2 == r1:
                     r2 = np.random.randint(0, N_cities)
 
                 a = min(r1, r2)
                 b = max(r1, r2)
+                accepted = False
 
-                if a == 0 and b == N_cities - 1:
-                    continue
+                if not (a == 0 and b == N_cities - 1):
+                    id_a_minus_one = tour[(a - 1) % N_cities]
+                    id_a = tour[a]
+                    id_b_plus_one = tour[(b + 1) % N_cities]
+                    id_b = tour[b]
 
-                id_a_minus_one = Tour_ID_matrix[p, (a - 1) % N_cities]
-                id_a = Tour_ID_matrix[p, a]
-                id_b_plus_one = Tour_ID_matrix[p, (b + 1) % N_cities]
-                id_b = Tour_ID_matrix[p, b]
-
-                dL = (
-                    D[id_a_minus_one, id_b]
-                    - D[id_a_minus_one, id_a]
-                    + D[id_b_plus_one, id_a]
-                    - D[id_b_plus_one, id_b]
-                )
-
-                accept = dL <= 0.0
-                if not accept and temperature > 0.0:
-                    accept = (
-                        np.random.random()
-                        < np.exp(-dL / temperature)
+                    dL = (
+                        D[id_a_minus_one, id_b]
+                        - D[id_a_minus_one, id_a]
+                        + D[id_b_plus_one, id_a]
+                        - D[id_b_plus_one, id_b]
                     )
 
-                if accept:
-                    current_L += dL
-                    Tour_ID_matrix[p] = reverse_subsequence(
-                        Tour_ID_matrix[p],
-                        a,
-                        b
-                    )
-                    accepted_moves += 1
+                    accepted = dL <= 0.0
+                    if not accepted and temperature > 0.0:
+                        accepted = np.random.random() < np.exp(
+                            -dL / temperature
+                        )
 
-            current_lengths[p] = current_L
-            accepted_population[p] = accepted_moves
-            acceptance_rate[n,p] = (
-                accepted_population[p]
-                / (mutations_per_sweep)
-            )
+                    if accepted:
+                        current_L += dL
+                        reverse_subsequence(tour, a, b)
+                        local_accepted += 1
 
-        Lengths[n + 1] = current_lengths
+                local_sum += current_L
+                local_sum_squared += current_L * current_L
+
+            Lengths[n + 1, p] = current_L
+            member_sample_sum[p] = local_sum
+            member_sample_sum_squared[p] = local_sum_squared
+            member_accepted[p] = local_accepted
+
+        total_sum = 0.0
+        total_sum_squared = 0.0
+        total_accepted = 0
+        mated_mean = 0.0
+        final_mean = 0.0
+        number_improved = 0
+
+        for p in range(population_size):
+            total_sum += member_sample_sum[p]
+            total_sum_squared += member_sample_sum_squared[p]
+            total_accepted += member_accepted[p]
+            mated_mean += mated_lengths[p]
+            final_mean += Lengths[n + 1, p]
+            if Lengths[n + 1, p] < mated_lengths[p]:
+                number_improved += 1
+
+        mean_L[n] = total_sum / proposals_per_sweep
+        mean_L_squared[n] = total_sum_squared / proposals_per_sweep
+        variance = mean_L_squared[n] - mean_L[n] * mean_L[n]
+        if variance < 0.0 and variance > -1e-10:
+            variance = 0.0
+        variance_L[n] = variance
+        if temperature > 0.0:
+            heat_capacity[n] = variance / (temperature * temperature)
+        else:
+            heat_capacity[n] = np.nan
+        acceptance_rate[n] = total_accepted / proposals_per_sweep
         temperatures[n] = temperature
 
-    if n_sweeps != 0:
+        should_record = detailed and (
+            (n + 1) % record_every == 0 or n == n_sweeps - 1
+        )
+        if should_record:
+            current_best, current_mean, current_variance, best_index = (
+                _mixed_population_statistics(
+                    Tour_id_matrix, Lengths[n + 1]
+                )
+            )
+            if current_best < running_best:
+                running_best = current_best
+
+            recorded_sweeps[record_index] = n + 1
+            population_lengths[record_index] = Lengths[n + 1]
+            for p in range(population_size):
+                member_acceptance_rate[record_index, p] = (
+                    member_accepted[p] / N_cities_sq
+                )
+            best_length[record_index] = current_best
+            mean_population_length[record_index] = current_mean
+            variance_population_length[record_index] = current_variance
+            edge_diversity[record_index] = _mixed_edge_diversity(
+                Tour_id_matrix, best_index
+            )
+            unique_cycle_fraction[record_index] = (
+                _mixed_unique_cycle_fraction(Tour_id_matrix)
+            )
+            best_so_far[record_index] = running_best
+            crossover_delta_mean[record_index] = (
+                mated_mean / population_size - previous_mean
+            )
+            annealing_delta_mean[record_index] = (
+                final_mean / population_size
+                - mated_mean / population_size
+            )
+            improved_fraction[record_index] = (
+                number_improved / population_size
+            )
+            record_index += 1
+
+    if n_sweeps > 0:
         temperatures[-1] = temperatures[-2]
+    else:
+        temperatures[0] = np.nan
 
     return (
-        Tour_ID_matrix,
+        Tour_id_matrix,
         Lengths,
         temperatures,
+        mean_L,
+        mean_L_squared,
+        variance_L,
+        heat_capacity,
         acceptance_rate,
+        recorded_sweeps[:record_index],
+        population_lengths[:record_index],
+        member_acceptance_rate[:record_index],
+        best_length[:record_index],
+        mean_population_length[:record_index],
+        variance_population_length[:record_index],
+        edge_diversity[:record_index],
+        unique_cycle_fraction[:record_index],
+        best_so_far[:record_index],
+        crossover_delta_mean[:record_index],
+        annealing_delta_mean[:record_index],
+        improved_fraction[:record_index],
     )
 
+
+def mixed_annealing_D_detailed(
+        Tour_id_matrix,
+        D,
+        population_size,
+        temperature_function,
+        Lengths_0,
+        n_sweeps,
+        const_temp=-1.0,
+        warm_up=False,
+        detailed=False,
+        record_every=1,
+):
+    """Mixed genetic/annealing solver with memory-bounded diagnostics.
+
+    The first eight returned values match the detailed single-tour solver's
+    useful quantities (apart from its prohibitively large raw-sample array):
+
+        final_population, length_history, temperature_history,
+        mean_L, mean_L_squared, variance_L, heat_capacity, acceptance_rate
+
+    ``mean_L`` and the related moments include every proposed annealing move,
+    but are accumulated online.  No raw
+    ``(sweep, population, N_cities**2)`` sample array is created.
+
+    With ``detailed=False`` only those eight values are returned.  With
+    ``detailed=True`` a ninth value is returned: a dictionary containing
+    downsampled population diagnostics.  ``record_every`` controls the sweep
+    stride of that dictionary and therefore its memory cost.
+
+    Notes
+    -----
+    The input population is modified in place, as in ``mixed_annealing_D``.
+    ``population_size`` must be even because tournament selection keeps half
+    of the population before crossover.
+    """
+    Tour_id_matrix = np.asarray(Tour_id_matrix)
+    Lengths_0 = np.asarray(Lengths_0, dtype=np.float64)
+
+    if Tour_id_matrix.ndim != 2:
+        raise ValueError("Tour_id_matrix must be a 2D array")
+    if population_size != Tour_id_matrix.shape[0]:
+        raise ValueError(
+            "population_size must equal Tour_id_matrix.shape[0]"
+        )
+    if population_size < 2 or population_size % 2 != 0:
+        raise ValueError("population_size must be an even integer >= 2")
+    if Lengths_0.shape != (population_size,):
+        raise ValueError("Lengths_0 must have shape (population_size,)")
+    if n_sweeps < 0:
+        raise ValueError("n_sweeps must be non-negative")
+    if record_every < 1:
+        raise ValueError("record_every must be at least 1")
+
+    output = _mixed_annealing_D_detailed_core(
+        Tour_id_matrix,
+        D,
+        population_size,
+        temperature_function,
+        Lengths_0,
+        int(n_sweeps),
+        float(const_temp),
+        bool(warm_up),
+        bool(detailed),
+        int(record_every),
+    )
+
+    base_output = output[:8]
+    if not detailed:
+        return base_output
+
+    metadata = {
+        "recorded_sweeps": output[8],
+        "population_lengths": output[9],
+        "member_acceptance_rate": output[10],
+        "best_length": output[11],
+        "mean_population_length": output[12],
+        "variance_population_length": output[13],
+        "edge_diversity": output[14],
+        "unique_cycle_fraction": output[15],
+        "best_so_far": output[16],
+        "crossover_delta_mean": output[17],
+        "annealing_delta_mean": output[18],
+        "improved_fraction": output[19],
+    }
+    return base_output + (metadata,)
 
     
 @nb.njit()
@@ -778,17 +1080,6 @@ def tsplib_dist(city1,city2):
 def construct_D_matrix(tour , distance_metric):
     N_cities = len(tour)
     D_matrix = np.empty((N_cities,N_cities))
-    tour2 = tour
-    
-    for p1 in range(N_cities):
-        for p2 in range(N_cities):
-            D_matrix[p1,p2] = distance_metric(tour[p1], tour2[p2])
-    return D_matrix
-
-@nb.njit(cache=True)
-def construct_D_matrix_dtype(tour , distance_metric,dtype = np.float64):
-    N_cities = len(tour)
-    D_matrix = np.empty((N_cities,N_cities),dtype=dtype)
     tour2 = tour
     
     for p1 in range(N_cities):
