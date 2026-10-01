@@ -10,44 +10,71 @@ from time import perf_counter
 import matplotlib.pyplot as plt
 import numba as nb
 import numpy as np
-
+import os
 import modules.plotForReport as pr
-from modules.TSP import annealing_D, mixed_annealing_D, construct_D_matrix, euclidian_dist, tsplib_dist , calculate_lenght
+from modules.TSP import (
+    annealing_D,
+    mixed_annealing_D, 
+    construct_D_matrix, 
+    euclidian_dist, 
+    tsplib_dist,
+    calculate_lenght,
+    subseq_dist_2,
+    subseq_dist_2_fast,
+    mean_edge_diversity
+)
 from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-SOLVER = "both"  # "annealing", "mixed", or "both"
+SOLVER = "mixed"  # "annealing", "mixed", or "both"
 show_temp_func =True
 DATA_FILE = Path("data/dsj1000.csv")
 Set_name = str(DATA_FILE).split("\\")[-1].split(".")[0]
 print(Set_name)
-OUTPUT_DIRECTORY = Path(f"../results/tsp_benchmark/{Set_name}")
 
 CSV_DELIMITER = ";"
 COORDINATE_COLUMNS = (0, 1)
 
-NUMBER_OF_RUNS = 8
-NUMBER_OF_SWEEPS = 200
-POPULATION_SIZE = 10
-
-INITIAL_TEMPERATURE = 10000
-COOLING_FACTOR = 0.99
-COOLING_FACTOR_exp = 0.03
-BASE_RANDOM_SEED = 28041999
-PERIOD = 5
+NUMBER_OF_RUNS = 1
+NUMBER_OF_SWEEPS =1800
+POPULATION_SIZE = 40
+MUTATION_INTERVAL = 3
+INITIAL_TEMPERATURE =12000
+COOLING_FACTOR = 0.975
+COOLING_FACTOR_exp = 0.015
+BASE_RANDOM_SEED = 30121999
+PERIOD = 20
 FREQUENCY = np.pi/PERIOD
 KNOWN_OPTIMUM = 18659688
-MINIMAL_CYCLE_TEMP = 800
+#KNOWN_OPTIMUM = 6528
+MINIMAL_CYCLE_TEMP = 5000
 MAKE_PLOTS_FOR_EACH_RUN = True
 WARM_UP_NUMBA = True
-
+tag = "mixed_cycling_modified_mate_id3"
+OUTPUT_DIRECTORY = Path(f"../results/tsp_benchmark/{Set_name}_ns{NUMBER_OF_SWEEPS}_pop{POPULATION_SIZE}_T0{INITIAL_TEMPERATURE}_{tag}")
 
 # ---------------------------------------------------------------------------
 # Functions required by the solvers
 # ---------------------------------------------------------------------------
+params_dict= {
+    "NUMBER_OF_RUNS":NUMBER_OF_RUNS, 
+    "NUMBER_OF_SWEEPS":NUMBER_OF_SWEEPS, 
+    "POPULATION_SIZE":POPULATION_SIZE,  
+    "MUTATION_INTERVAL":MUTATION_INTERVAL,  
+    "INITIAL_TEMPERATURE":INITIAL_TEMPERATURE, 
+    "COOLING_FACTOR":COOLING_FACTOR,  
+    "COOLING_FACTOR_exp":COOLING_FACTOR_exp,  
+    "BASE_RANDOM_SEED":BASE_RANDOM_SEED,  
+    "PERIOD":PERIOD, 
+    "FREQUENCY":FREQUENCY, 
+    "KNOWN_OPTIMUM":KNOWN_OPTIMUM,  
+    "MINIMAL_CYCLE_TEMP":MINIMAL_CYCLE_TEMP, 
+    "MAKE_PLOTS_FOR_EACH_RUN":MAKE_PLOTS_FOR_EACH_RUN, 
+    "WARM_UP_NUMBA":WARM_UP_NUMBA, 
+}
 
 
 @nb.njit(cache=True)
@@ -57,16 +84,34 @@ def temperature_function(sweep, current_tour, current_length):
     current_tour and current_length are accepted because this is the callback
     signature expected by the current solver implementation.
     """
-    return INITIAL_TEMPERATURE * COOLING_FACTOR**sweep
+    return INITIAL_TEMPERATURE*np.exp(-((sweep)**2)/(2*100**2)) +MINIMAL_CYCLE_TEMP*np.exp(-((sweep-600)**2)/(2*10**2)) + MINIMAL_CYCLE_TEMP*np.exp(-((sweep-900)**2)/(2*10**2)) +  MINIMAL_CYCLE_TEMP*np.exp(-((sweep-1200)**2)/(2*10**2))  + 0*2*MINIMAL_CYCLE_TEMP*np.exp(-((sweep-1800)**2)/(2*20**2)) + 2*MINIMAL_CYCLE_TEMP*np.exp(-((sweep-1500)**2)/(2*5**2))
+
+@nb.njit(cache=True)
+def temperature_function5(sweep, current_tour, current_length):
+    """Simple exponential cooling schedule.
+
+    current_tour and current_length are accepted because this is the callback
+    signature expected by the current solver implementation.
+    """
+    return INITIAL_TEMPERATURE * COOLING_FACTOR**sweep + MINIMAL_CYCLE_TEMP*np.exp(-((sweep-550)**2)/(2*20**2)) +  4*MINIMAL_CYCLE_TEMP*np.exp(-((sweep-1000)**2)/(2*20**2))
+@nb.njit(cache=True)
+def temperature_function7(sweep, current_tour, current_length):
+    """Simple exponential cooling schedule.
+
+    current_tour and current_length are accepted because this is the callback
+    signature expected by the current solver implementation.
+    """
+    return INITIAL_TEMPERATURE * COOLING_FACTOR**sweep 
+
 @nb.njit(cache=True)
 def temperature_function_periodic(sweep,current_tour,current_lenght):
     return INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)*(np.cos(FREQUENCY*sweep)**2+ MINIMAL_CYCLE_TEMP*COOLING_FACTOR**sweep)
 @nb.njit(cache=True)
 def temperature_function_periodic2(sweep,current_tour,current_lenght):
-    return INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)*(np.cos(FREQUENCY*sweep)**2+ 1)
+    return INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)*(np.cos(FREQUENCY*sweep + np.pi/2)**2+ 1)
 @nb.njit(cache=True)
 def temperature_function_periodic3(sweep,current_tour,current_lenght):
-    return (INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)+MINIMAL_CYCLE_TEMP)*(np.cos(FREQUENCY*sweep)**2 + 1)
+    return (INITIAL_TEMPERATURE*np.exp(-COOLING_FACTOR_exp*sweep)+MINIMAL_CYCLE_TEMP*(COOLING_FACTOR**(sweep*0.4)))*(np.cos(FREQUENCY*sweep + np.pi/2)**2 +0.5)
 @nb.njit(cache=True)
 def length_function(ordered_coordinates):
     """Closed-tour length using the rounded TSPLIB EUC_2D convention.
@@ -131,7 +176,7 @@ def one_temperature_history(temperatures):
     return temperatures[:, -1]
 
 
-def plot_returned_tour(coordinates, returned_tour, title, save_path):
+def plot_returned_tour(coordinates, returned_tour, title, save_path ,length = None):
     """Plot either city IDs or the reordered coordinates returned currently."""
     returned_tour = np.asarray(returned_tour)
 
@@ -141,6 +186,7 @@ def plot_returned_tour(coordinates, returned_tour, title, save_path):
             returned_tour,
             title=title,
             save_path=save_path,
+            length=length
         )
 
     if returned_tour.ndim == 2 and returned_tour.shape[1] == 2:
@@ -177,7 +223,7 @@ def run_annealing(coordinates, distance_matrix, temp_func):
     runtimes = []
     tour = coordinates.copy()
     starting_length = length_function(tour)#
-    #starting_length = calculate_lenght(tour)    
+    
     
     N_cities = len(tour)
     tour_ids = np.arange(0,N_cities, dtype=np.int32)
@@ -193,11 +239,11 @@ def run_annealing(coordinates, distance_matrix, temp_func):
 
     tour = coordinates.copy()
     starting_length = length_function(tour)#
-    starting_length = calculate_lenght(tour)    
+      
 
     N_cities = len(tour)
     tour_ids = np.arange(0,N_cities, dtype=np.int32)
-
+    tour_ids_start = np.arange(0,N_cities, dtype=np.int32)
     for run_index in tqdm(range(NUMBER_OF_RUNS),desc="Running Annealing"):
         seed = BASE_RANDOM_SEED + run_index
         seed_numba(seed)
@@ -210,11 +256,12 @@ def run_annealing(coordinates, distance_matrix, temp_func):
             starting_length,
             NUMBER_OF_SWEEPS,
         )
+        tour_ids = tour_ids_start.copy()
         #INITIAL_TEMPERATURE = INITIAL_TEMPERATURE/(run_index+1)
         #print(final_tour,"finaltour")
         tour = tour[final_tour]
-        tour_ids = final_tour.copy()
-        starting_length = length_history[-1]
+        #tour_ids = final_tour.copy()
+        #starting_length = length_history[-1]
         runtime = perf_counter() - start_time
 
         length_history = np.asarray(length_history)
@@ -231,6 +278,7 @@ def run_annealing(coordinates, distance_matrix, temp_func):
         np.save(run_directory / "random_seed.npy", np.array(seed))
 
         histories.append(best_history)
+        #histories.append(length_history)
         final_lengths.append(float(best_history[-1]))
         runtimes.append(runtime)
         save_aggregate_results(
@@ -285,10 +333,7 @@ def run_mixed(coordinates, distance_matrix, temp_func):
 
     N_cities = len(tour)
    
-    #if N_cities < 65500:
-    #    tour_ids = np.arange(0,N_cities,dtype=np.int16)    
-    #    Tour_id_matrix = np.empty((POPULATION_SIZE,N_cities),dtype=np.int16)
-    #else:
+    
     tour_ids = np.arange(0,N_cities,dtype=np.int32)
     Tour_id_matrix = np.empty((POPULATION_SIZE,N_cities),dtype=np.int32)
     for n_p in range(POPULATION_SIZE):
@@ -302,8 +347,11 @@ def run_mixed(coordinates, distance_matrix, temp_func):
             distance_matrix,
             POPULATION_SIZE,
             temp_func,
-            Lengths,
+            5,
             0,
+            False,
+            False,
+            BASE_RANDOM_SEED
         )
 
     for run_index in tqdm(range(NUMBER_OF_RUNS), desc = "Running Mixed"):
@@ -311,15 +359,28 @@ def run_mixed(coordinates, distance_matrix, temp_func):
         seed_numba(seed)
 
         start_time = perf_counter()
-        final_population, length_history, temperatures = mixed_annealing_D(
+        final_population, length_history, temperatures, Tour_ID_Matrix_sweep,dead_ids_sweep, mating_ids_sweep = mixed_annealing_D(
             Tour_id_matrix,
             distance_matrix,
             POPULATION_SIZE,
             temp_func,
-            Lengths,
+            MUTATION_INTERVAL,
             NUMBER_OF_SWEEPS,
+            True,
+            True,
+            BASE_RANDOM_SEED
         )
-        #INITIAL_TEMPERATURE = INITIAL_TEMPERATURE/(run_index+1)
+
+        diversity = np.empty(Tour_ID_Matrix_sweep.shape[0], dtype=np.float64)
+        subseq_div = np.empty(Tour_ID_Matrix_sweep.shape[0], dtype=np.float64)
+        matches_history = np.empty((Tour_ID_Matrix_sweep.shape[0],POPULATION_SIZE,POPULATION_SIZE), dtype=np.int32)
+
+        for n , tour_id_matrix in tqdm(enumerate(Tour_ID_Matrix_sweep), desc="calc diversity"):
+            matches, rel_to_disorder, like = subseq_dist_2_fast(tour_id_matrix,100,tour_id_matrix.shape[1])
+            matches_history[n] = matches
+            subseq_div[n] = like
+            diversity[n] = mean_edge_diversity(tour_id_matrix)
+
         Tour_id_matrix = final_population.copy()
         print("Input dtype:", Tour_id_matrix.dtype)
         Lengths = length_history[-1]
@@ -336,17 +397,25 @@ def run_mixed(coordinates, distance_matrix, temp_func):
             population_history = length_history
         else:
             raise ValueError("Mixed length history must be 1D or 2D")
+        minimal_length_per_sweep = np.min(population_history, axis=1)
 
         best_history = np.minimum.accumulate(
-            np.min(population_history, axis=1)
+            minimal_length_per_sweep
         )
         mean_history = np.mean(population_history, axis=1)
         variance_history = np.var(population_history, axis=1)
-        best_population_index = int(np.argmin(population_history[-1]))
+        best_population_index_last = int(np.argmin(population_history[-1]))
 
+        best_population_index_history = np.argmin(population_history, axis= 1)
+        best_sweep_idx = np.argmin(minimal_length_per_sweep)
+        if type(best_sweep_idx) == np.ndarray:
+            best_sweep_idx = best_sweep_idx[0]
+        best_tour_overall = Tour_ID_Matrix_sweep[best_sweep_idx,best_population_index_history[best_sweep_idx]]
+        best_length_overall = length_history[best_sweep_idx,best_population_index_history[best_sweep_idx]]
         run_directory = output_directory / f"run_{run_index:03d}"
         run_directory.mkdir(exist_ok=True)
-
+        
+        np.save(run_directory/ "best_tour_overall.npy", best_tour_overall)
         np.save(run_directory / "final_population.npy", final_population)
         np.save(run_directory / "length_history.npy", population_history)
         np.save(run_directory / "temperature_history.npy", temperatures)
@@ -373,6 +442,8 @@ def run_mixed(coordinates, distance_matrix, temp_func):
                 best_history=best_history,
                 mean_history=mean_history,
                 variance_history=variance_history,
+                diversity_history=diversity,
+                acceptance_history= subseq_div,
                 temperature_history=one_temperature_history(temperatures),
                 optimum=KNOWN_OPTIMUM,
                 title=f"Mixed solver run {run_index}",
@@ -380,14 +451,62 @@ def run_mixed(coordinates, distance_matrix, temp_func):
             )
             plt.close(figure)
 
-            best_tour = final_population[best_population_index]
+            best_tour_last = final_population[best_population_index_last]
+            best_length_last = Lengths[best_population_index_last]
+            
             figure, _ = plot_returned_tour(
                 coordinates,
-                best_tour,
+                best_tour_last,
                 title=f"Mixed final tour, run {run_index}",
                 save_path=run_directory / "final_tour.png",
+                length=best_length_last
             )
             plt.close(figure)
+
+            figure , _ =plot_returned_tour(
+                coordinates,
+                best_tour_overall,
+                title=f"Mixed best tour, at sweep {best_sweep_idx}",
+                save_path= run_directory / "best_tour_overall.png",
+                length= best_length_overall
+            )
+            plt.close(figure)
+
+            index_selected = best_sweep_idx
+            delta = 6
+            shift = 0
+            if index_selected + delta > len(best_population_index_history)-1:
+                shift = index_selected +delta - len(best_population_index_history) + 2
+
+
+            window_min = index_selected - delta - shift
+            window_max = index_selected + delta - shift 
+            window = np.arange(window_min,window_max, dtype=np.int32)
+            mating_window = mating_ids_sweep[window]
+            dead_idx_window = dead_ids_sweep[window]
+            population_index_history_window = best_population_index_history[window]
+            x_window = np.arange(NUMBER_OF_SWEEPS, dtype= np.int32)[window]
+            figure, _ = pr.plot_best_population_index_history(
+                population_index_history_window,
+                dead_idx=dead_idx_window,
+                mate_idx=mating_window,
+                x=x_window,
+                population=POPULATION_SIZE,
+                save_path= run_directory / "pop_index_history_detailed.png"
+            )
+            plt.close(figure)
+            slices = NUMBER_OF_SWEEPS//100
+            min = 0
+            for s in range(slices):
+                max = int(min+100)
+                figure, _ = pr.plot_best_population_index_history(
+                                best_population_index_history[min:max],
+                                population=POPULATION_SIZE,
+                                save_path= run_directory / f"pop_index_history_{min}_{max}.png"
+                            )
+                plt.close(figure)
+                min = max
+                    
 
         print(
             f"Mixed run {run_index}: "
@@ -401,6 +520,7 @@ def run_mixed(coordinates, distance_matrix, temp_func):
         "histories": np.asarray(histories),
         "final_lengths": np.asarray(final_lengths),
         "runtimes": np.asarray(runtimes),
+        "best_tour": np.asarray(best_tour_overall)
     }
 
 
@@ -408,20 +528,28 @@ def run_mixed(coordinates, distance_matrix, temp_func):
 # Main program
 # ---------------------------------------------------------------------------
 
+    
 
 def main():
     
     if show_temp_func:
         sweep = np.arange(NUMBER_OF_SWEEPS)
+        print("temperature_function_periodic3")
+        print(f"last temperature {temperature_function_periodic3(sweep, 0 ,0 )[-1]}")
         plt.plot(sweep, temperature_function_periodic3(sweep, 0 ,0 ))
         plt.show()
         plt.cla()
+        print("temperature_function_periodic2")
+        print(f"last temperature {temperature_function_periodic2(sweep, 0 ,0 )[-1]}")
         plt.plot(sweep, temperature_function_periodic2(sweep, 0 ,0 ))
         plt.show()
         plt.cla()
+        print("temperature_function_periodic")
+        print(f"last temperature {temperature_function_periodic(sweep, 0 ,0 )[-1]}")
         plt.plot(sweep, temperature_function_periodic(sweep, 0 ,0 ))
         plt.show()
         plt.cla()
+        print("temperature_function")
         plt.plot(sweep,temperature_function(sweep,0,0))
         plt.show()
         print("satisfied with the temp funcs? [y/n]\n")
@@ -445,10 +573,10 @@ def main():
     
     
     if SOLVER == "annealing" or SOLVER == "both":
-        annealing_results = run_annealing(coordinates, distance_matrix,temperature_function_periodic3)
+        annealing_results = run_annealing(coordinates, distance_matrix,temperature_function)
 
     if SOLVER == "mixed" or SOLVER == "both":
-        mixed_results = run_mixed(coordinates, distance_matrix,temperature_function_periodic3)
+        mixed_results = run_mixed(coordinates, distance_matrix,temperature_function)
 
     if annealing_results is not None:
         print("\nAnnealing summary:")
@@ -469,7 +597,7 @@ def main():
                 optimum=KNOWN_OPTIMUM,
             )
         )
-
+    np.save(os.path.join(OUTPUT_DIRECTORY, "parameter_dict.npy"), params_dict)
     if annealing_results is not None and mixed_results is not None:
         n_cities = coordinates.shape[0]
 
@@ -480,7 +608,7 @@ def main():
         mixed_x = (
             np.arange(1, mixed_results["histories"].shape[1] + 1)
             * n_cities**2
-            * POPULATION_SIZE
+        
         )
         #annealing_x, mixed_x = np.log10(annealing_x), np.log10(mixed_x)
         figure, _ = pr.plot_comparison(

@@ -1,4 +1,5 @@
 import modules.TSP as tsp
+
 import modules.plotForReport as pr
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -81,11 +82,11 @@ def solve_system_with_TSP(tours_ids,D,temperatures, nsweeps, warmup =1500,detail
         tours_ids_1,_, _,_, _,_, _, _, _ = tsp.annealing_D_detailed(
                 tours_ids,
                 D,
-                temp_func_warmup,
+                temp_func_const,
                 lenght,
                 warmup,
                 const_temp=t,
-                warm_up=True,
+                warm_up=False,
                 detailed=detailed
             )
         lenght = calculate_total_distance_with_D(D,tours_ids_1)
@@ -156,13 +157,13 @@ def solve_system_from_permutations(
         if len(perm) != expected_perm:
             print(f"length {len(perm)} dont match to expected {expected_perm}")
             #perm = permutations2(tour_ids,N_cities)
-            perm = unique_tsp_permutations(N_cities)
+            perm = tsp.unique_tsp_permutations(N_cities)
         else:
             print("perms mathc")
     else:
         print(f"couldnt find file , reverting to manual calc")
         #perm = permutations2(tour_ids,N_cities)  
-        perm = unique_tsp_permutations(N_cities)
+        perm = tsp.unique_tsp_permutations(N_cities)
         perm = np.array(perm)
         #print(perm[:5])
         np.save(perm_path,perm)
@@ -291,110 +292,6 @@ def plot_quantity(
 
 
 
-
-@nb.njit(cache=True)
-def factorial_int(n):
-    result = 1
-
-    for i in range(2, n + 1):
-        result *= i
-
-    return result
-
-
-@nb.njit(cache=True)
-def next_permutation(values):
-    """Change values to its next lexicographic permutation.
-
-    Returns False when the current permutation is the last one.
-    """
-    n = len(values)
-
-    i = n - 2
-
-    while i >= 0 and values[i] >= values[i + 1]:
-        i -= 1
-
-    if i < 0:
-        return False
-
-    j = n - 1
-
-    while values[j] <= values[i]:
-        j -= 1
-
-    temporary = values[i]
-    values[i] = values[j]
-    values[j] = temporary
-
-    left = i + 1
-    right = n - 1
-
-    while left < right:
-        temporary = values[left]
-        values[left] = values[right]
-        values[right] = temporary
-
-        left += 1
-        right -= 1
-
-    return True
-
-
-@nb.njit(cache=True)
-def unique_tsp_permutations(N_cities):
-    """Generate unique tours for a symmetric TSP.
-
-    City 0 is fixed at the beginning to remove rotational duplicates.
-    A tour and its reversed version are counted only once.
-    """
-    if N_cities < 1:
-        raise ValueError("N_cities must be at least 1")
-
-    if N_cities == 1:
-        tours = np.empty((1, 1), dtype=np.int32)
-        tours[0, 0] = 0
-        return tours
-
-    if N_cities == 2:
-        tours = np.empty((1, 2), dtype=np.int32)
-        tours[0, 0] = 0
-        tours[0, 1] = 1
-        return tours
-
-    number_of_tours = factorial_int(N_cities - 1) // 2
-
-    tours = np.empty(
-        (number_of_tours, N_cities),
-        dtype=np.int32
-    )
-
-    remaining_cities = np.arange(
-        1,
-        N_cities,
-        dtype=np.int32
-    )
-
-    tour_index = 0
-    permutations_remaining = True
-
-    while permutations_remaining:
-        # Between a tour and its reverse, exactly one satisfies this.
-        if remaining_cities[0] < remaining_cities[-1]:
-            tours[tour_index, 0] = 0
-
-            for city_index in range(N_cities - 1):
-                tours[tour_index, city_index + 1] = (
-                    remaining_cities[city_index]
-                )
-
-            tour_index += 1
-
-        permutations_remaining = next_permutation(
-            remaining_cities
-        )
-
-    return tours
 
 
 

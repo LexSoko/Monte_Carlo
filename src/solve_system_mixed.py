@@ -15,7 +15,7 @@ import numba as nb
 import numpy as np
 from tqdm import tqdm
 
-import modules.gpt_tsp as tsp
+import modules.TSP as tsp
 import modules.plotForReport as pr
 
 

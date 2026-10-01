@@ -188,6 +188,7 @@ def measure_performance():
          "N_cities": N_cities,
          "times": []
     }
+
     for tour in tqdm(tours,desc="construct_D_matrix"):
         time_exec = 0
         for r in range(repeat):
@@ -246,9 +247,7 @@ def measure_performance():
                 )
             end = perf_counter()
             time_exec += (end - start)
-        if i == 0:
-            print("\n After first benchamrk: \n")
-            print(tsp.annealing_step_Dmatrix.signatures)
+        
         time_avg = time_exec/repeat
         results["annealing_step_Dmatrix"]["times"].append(time_avg)
 

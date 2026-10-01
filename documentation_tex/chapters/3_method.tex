@@ -1,45 +1,64 @@
 \section{Methods}
+\label{sec:Methods}
 
-
-There are three algorithms used in this project paper. 
-In this section these three methods are explained and discussed.
+There are two algorithms used in this project paper. 
+In this section these two methods are explained and discussed.
 \subsection{Simulated Annealing}
 Simulated Annealing is a computational method that takes inspiration from solid state physics, namely from solid annealing and crystalization.
 As solids are heated they form different crystal structures.
 If left to cool local order emerges, driven by the tendency of a material to reduce internal stress and to attain a lower energy state.
-The same principle is applied to the a sequence of city positions where the order in which the cities are visited strongly influences the path length. 
-In this approach, the length of sequentially ordered cities is considered the Free Energy of the system:
+The same principle is applied to the sequence of node positions where the order in which the nodes are visited strongly influences the path length. 
+In this approach, the length of sequentially ordered nodes is considered the energy of the system:
 \begin{equation}
-    E(\{\mathbf{x}\}) = \sum_{i=1}^{N} |\mathbf{x}_{i+1} - \mathbf{x}_i| \quad \text{mit} \quad \mathbf{x}_{N+1} = \mathbf{x}_1.
+    L(\tau) = E(\tau) = \sum_{i=1}^{N} |\mathbf{x}_{i+1} - \mathbf{x}_i| \quad \text{with} \quad \mathbf{x}_{N+1} = \mathbf{x}_1.
     \label{eg:energy}
 \end{equation}
-In this, the $N!$ combinations of states (particular permutations) form a statistical ensemble, which corresponds to a partition function. 
+
+In this, the $(N-1)!/2$ combinations of states (particular permutations) form a statistical ensemble, which corresponds to a partition function. 
 The partition function encapsulates the statistical properties of the system in thermodynamic equilibrium. 
 It serves as a function of thermodynamic state variables, such as temperature, and provides access to macroscopic quantities like free energy through its derivatives.
 The canonical partition function, commonly used in such contexts, describes a system in thermal equilibrium with its environment at a fixed temperature. 
 Since direct computation of the partition function by summing over all possible states is infeasible due to the factorial growth of possible permutations, Simulated Annealing is employed to explore the configuration space.
-
+For the sake of understandability the energy will be replaced by the length, as it is the same quantity in this kind of systems.
 \begin{equation}
-    Z = \sum_i e^{-\beta E_i}
+    Z = \sum_i e^{- L(\tau_i) /T}
     \label{eq:partition}
 \end{equation}
 
-\noindent One can use the Boltzman distribution to determine the probability of observing a state $\mathbf{x}$ at a given temperature and observed energy.
+\noindent One can use the Boltzman distribution to determine the probability of observing a state $\tau$ at a given temperature and observed length.
 
 \begin{equation}
-    p_E(\{\mathbf{x}\} | T) = \frac{1}{Z} \exp \left\{ -\frac{1}{T} E(\{\mathbf{x}\}) \right\}
+    p_L(\tau | T) = \frac{1}{Z} \exp \left\{ -\frac{1}{T} L(\tau) \right\}
+    \label{eq:prob_visit}
 \end{equation}
-Since $Z$ cannot be computed in a reasonable time for large systems, this distribution tells that a thermodynamic system favors lower energy states, especially at lower temperatures.
+
+The expectation value for the length $L$ at a given temperature $T$ is than given by:
+
+\begin{equation}
+    \langle L \rangle_T = \sum_i L(\tau_i) \cdot p_L(\tau_i | T)
+    \label{eq:expect}
+\end{equation}
+Consequently one can also define the variance of $L$ with: 
+\begin{equation}
+    \textrm{Var}(L)_T = \langle L^2 \rangle_T - \langle L \rangle^2_T
+    \label{eq:variance}
+\end{equation}
+From the definition of the variance an analog for the heat capacitance can be defined:
+\begin{equation}
+    C(T) = \frac{\textrm{Var}(L)_T}{ T^2}
+    \label{eq:heat_cap}
+\end{equation}
+Since $Z$ cannot be computed in a reasonable time for large systems, this distribution states that a thermodynamic system favors lower energy states, especially at lower temperatures.
 This probility can be used to construct an acceptance probability for changing states as seen in eq. \ref{eq:acceptance}.
-By this definition negative Energy changes are always accepted, while positive are decreasingly unlikely with lower temperature.
+By this definition negative energy changes are always accepted, while positive are increasingly unlikely with lower temperature.
 In combination with temperature variations this allows for efficient exploration of the phase space.
 \begin{equation}
-    \min \left( 1, \frac{p_E(x_2|T)}{p_E(x_1|T)} \right)
+    \min \left( 1, \frac{p_E(\tau_2|T)}{p_E(\tau_1|T)} \right)
     \label{eq:acceptance}
 \end{equation}
 
 \noindent In order to traverse the energy landscape, a appropriate change must be proposed.
-This is realized by taking a random subpath of the cities sequence by generating two random indeces $(a,b) != (1,N)$ and flipping it, as seen here: 
+This is realized by taking a random subpath of the cities sequence $K$ by generating two random indeces $(a,b) != (1,N)$ and flipping it, as seen here: 
 \begin{align}
     K: &\quad S_1, \dots, S_{a-1}, \underbrace{S_a, S_{a+1}, \dots, S_{b-1}, S_b}_{\textit{old}}, S_{b+1}, \dots, S_N \\
     K': &\quad S_1, \dots, S_{a-1}, \underbrace{S_b, S_{b-1}, \dots, S_{a+1}, S_a}_{\textit{new}}, S_{b+1}, \dots, S_N 
@@ -50,21 +69,71 @@ This is realized by taking a random subpath of the cities sequence by generating
     E(K') - E(K) = \overline{S_{a-1} S_b} + \overline{S_a S_{b+1}} - \overline{S_{a-1} S_a} - \overline{S_b S_{b+1}}
 \end{equation}
 
-\noindent By applying the changes and comparing a uniform generated number with the acceptance probability one can minimize the energy.
+\noindent By applying the changes and comparing a uniformly generated number with the acceptance probability one can minimize the energy.
 If one chooses a appropriate temperature function, which changes the temperature input every sweep ($N^2$), local minima can be explored. 
 Even a global minima can be found, but this can not be verified even for relatively few cities.
 
-\subsection{Genetic Algorithm}
-This approach is derived from nature. 
-It simulates natural evolution of a population of individual cities sequences.
-As in nature there are steps of inheritance ,mutation and natural selection. 
-There are several ways to implement this concept and the used algorithm is a basic version with only the core steps.
-In this approach the cost function needs to be evaluated very often and the energy needs to be calculated in its entirety.
-At first a population from one path is created by shuffeling the path N times and saving the individuals.
+\subsection{Combined Algorithm (Genetic + Annealing)}
+This approach is derived from nature. (Kind of) 
+It simulates the natural evolution of a population of individual node sequences.
+As in nature there are steps of inheritance, mutation, and natural selection. 
+There are several ways to implement this concept, and the used algorithm is a basic version with only the core steps.
+In this approach the cost function needs to be evaluated very often, and the length needs to be calculated in its entirety.
+At first a population from one path is created by shuffling the path N times and saving the individuals.
 This ensures genetic diversity at the start.
-The following steps are implemented, which are done each iteration: \\
+
+The following steps are implemented, and are done each sweep: \\
 \begin{itemize}
-    \item \textbf{Selection} \\ asdasd
-    \item \textbf{Reproduction}
-    \item \textbf{Mutation}
+    \item \textbf{Selection} \\ This is done by choosing survivors of a the current population by taking uniform random pairs ($a,b$) and comparing their lenghts. The population array is shuffled and split in half. This ensures a that not only the best paths are selected and genetic variety is conserved.
+        \begin{align}
+            P: &\quad K_1 \dots, K_a , \dots , K_b , \dots , K_M \\
+            E(K_a) &> E(K_b) 
+        \end{align}
+        By comparing random paths from the population, there is a chance of some unfit paths to still survive. However the worst path is always dropped.
+    \item \textbf{Reproduction} \\ Pairs of survivors are taken at random and their genome is combined to form a new solution. This is done by taking a random subpath between indecess $(a,b)$ of one parent and inserting it into the genome of the other parents genome. 
+            Each pair of survivors gives rise to two offspring. The following method is applied to the pair ($i \rightarrow  j$) and ($j \rightarrow i$) of two random individuals.  
+            So both can share a subgenom $\mathbf{SG}$   (subpath) of their whole genom $\mathbf{G}$ (tour). 
+            \begin{align}
+                \mathbf{G}_i: \{\mathbf{ID}_0, \dots , \mathbf{ID}_{42},\dots, &\mathbf{ID}_{11}, \dots, \mathbf{ID}_{142}, \dots, \mathbf{ID}_N \} \notag \\
+                &\Uparrow \text{match}  \notag \\
+                \mathbf{SG}_j: \{\mathbf{ID}_a,\mathbf{ID}_{142}, &\mathbf{ID}_{11}, \mathbf{ID}_{42},\mathbf{ID}_{b} \notag  \}
+            \end{align} 
+            The $\mathbf{ID}$'s of $\mathbf{SG}_j$ are matched in the genom of $\mathbf{G}_i$, while not matched $\mathbf{ID}$'s are stored in a seperate set.
+            What remains of $\mathbf{G}_i$ is than stored in a set $\mathbf{RG}_i : \mathbf{G}_i / \mathbf{SG}_j$ (remaining genom). 
+            Both subsequences are then used to construct a new genom by inserting the subgenom $\mathbf{SG}_j$  in the same place as it was in the original $\mathbf{G}_j$ (between indeces $a$ and $b$).
+            In the remaining genom $\mathbf{RG}_i$ entries are then placed outside of the indeces $a$ and $b$ in the same ordering they where in $\mathbf{G}_i$. 
+    \item \textbf{Mutation} \\ This step is generally implemented by randomly exchanging ordering. In this algorithm the metropolis-hastings step is used.
 \end{itemize}
+
+Genetic algorithms are generally fast in finding a solution, even if the cost function has a complex shape, because they can traverse the configuration space with a bigger coverage based on the genetic variety.
+However, it is less efficient in finding the optimum itself. Only the reproduction and the selection parts are used. 
+The idea is very simple: to combine the process of simulated annealing with the evolutionary optimization of the genetic algorithm.
+Simulated annealing focuses on local optimization, making it effective at refining solutions but limited in exploration.
+On the other hand, the genetic selection and reproduction produces a bigger coverage but does not efficiently find the optimum, as discussed before.
+The key is to find a good balance between the two.
+Therefore the probability of mutation is guided by the Boltzmann distribution, and multiple mutations in a timestep are allowed.
+Also, this approach introduces the temperature $T$ as an external variable, which can influence the population.
+One way to think about this is in the evolutionary context.
+Certain environments can allow a population of a species to mutate, which are less crucial to the survival by pure chance.
+Like in the case of the dodo, if the environment is not forcing it to have beneficial mutations, birds can lose the ability to fly but gain size.
+This would be the case for higher temperatures.
+The temperature in this case can be thought of as evolutionary pressure and not the literal temperature that an individual can experience. \\ \\ 
+For this algorithm some metrics are introduced additionally to analyze populations. 
+The first metric is the mean edge diversity, which just looks at the shared edges $d_{ij}$ of population members.
+For this, both neighbors of all nodes of all population members are stored and compared between population members.
+If a node ID in population member i has the same neighbor as the same node ID of population member j, it gets counted.  
+\begin{equation}
+   \text{edge diversity} = 1 - \frac{1}{NP^2}\sum_{ij}^{P^2} d_{ij}
+\end{equation}
+This should be a sensible estimate for the diversity of a population.
+Additionally, a second metric is used. 
+Here all subsequences $s$ of length $a<L_s<N_{Nodes}$ are counted and normalized by a shared subsequence of a completely homogeneous population set. 
+For this replica set the count would be $P^2 (N_{Nodes} - a)$.
+This shall be called likeness $S$.
+\begin{equation}
+    S = 1 - \frac{1}{P^2 (N_{Nodes} - a)}\sum_{ij}^{P^2} s_{a<L_s<N_{Nodes}}
+\end{equation}
+These two measures are not only used as the classification of the diversity but can also be interpreted as a distance between state vectors.
+I don't want to claim that this is a rigorous metric, but it gives an estimate. 
+One weakness is that this 'pseudo-metric' is normalized on a population, so the distance is always in respect to the size and the variance between a population. 
+An outlier state vector distance would always be in respect to the diversity of a population or an independent set of state vectors.

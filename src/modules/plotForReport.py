@@ -9,10 +9,12 @@ repeated histories: (n_runs, n_records)
 """
 
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numba as nb
 import numpy as np
 import os
 
+from matplotlib.ticker import MaxNLocator
 # Functions that can be called inside @nb.njit solver functions.
 
 
@@ -130,6 +132,7 @@ def benchmark_summary(final_lengths, runtimes=None, optimum=None):
         "variance": float(np.var(values)),
         "standard_deviation": float(np.std(values)),
         "worst": float(np.max(values)),
+        "optimum":optimum
     }
 
     if optimum is not None:
@@ -153,16 +156,19 @@ def benchmark_summary(final_lengths, runtimes=None, optimum=None):
     return summary
 
 
-def plot_tour(coordinates, tour, title="TSP tour", save_path=None):
+def plot_tour(coordinates, tour, title="TSP tour", save_path=None, length = None):
     """Plot one closed two-dimensional tour."""
     coordinates = np.asarray(coordinates)
     tour = np.asarray(tour)
-
+    if length == None:
+        label = f"best tour"
+    else:
+        label = f"L = {length:.0f}"
     ordered = coordinates[tour]
     closed = np.vstack((ordered, ordered[0]))
 
     fig, ax = plt.subplots(figsize=(7, 7))
-    ax.plot(closed[:, 0], closed[:, 1], linewidth=0.7, color="tab:blue")
+    ax.plot(closed[:, 0], closed[:, 1], linewidth=0.7, color="tab:blue" , label = label)
     ax.scatter(ordered[:, 0], ordered[:, 1], s=4, color="black", zorder=2)
     ax.set(title=title, xlabel="x", ylabel="y")
     ax.set_aspect("equal", adjustable="box")
@@ -171,6 +177,125 @@ def plot_tour(coordinates, tour, title="TSP tour", save_path=None):
 
     _save(fig, save_path)
     return fig, ax
+
+def plot_best_population_index_history(
+        best_population_index_history,
+        matches_history = [None],
+        dead_idx = [None],
+        mate_idx = [None],
+        seq_l = None,
+        x = None,
+        title = "Best population ID trajectory",
+        x_label = "recorded step",
+        cmap_name = "hsv",
+        save_path = None,
+        population = None
+):
+    
+    if type(matches_history) == np.ndarray:
+        population_size = matches_history.shape[1]
+    else:
+        if population != None:
+            population_size = population
+        else:
+            raise ValueError("give atleast population size as keyword")
+    populations = np.arange(population_size, dtype=np.int32) + 1
+    best_population_index_history = best_population_index_history + 1
+
+    
+
+    history = np.asarray(best_population_index_history, dtype=np.int32)
+    if history.ndim == 1:
+           history = history[:, None]
+    if history.ndim != 2:
+        raise ValueError("length_history must be a 1D or 2D array") 
+    n_records = history.shape[0]
+    x = np.arange(n_records) if x is None else np.asarray(x)
+    if x.size != n_records:
+        raise ValueError("x must have one value per recorded step")
+    cmap = plt.colormaps[cmap_name]
+    
+    norm = mpl.colors.Normalize(
+        vmin=0,
+        vmax=np.max(population_size),
+    )
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    for p in populations:
+        ax.hlines(
+            [p],
+            xmin=min(x),
+            xmax=max(x),
+            colors=cmap(norm(p)),
+            alpha = 0.70,
+            zorder = 1
+        )
+        ax.scatter(
+            x,
+            [p]*len(x),
+            c=cmap(norm(p)),
+            alpha=0.8,
+            zorder = 1
+        )
+    if type(mate_idx) == np.ndarray:
+        mate_idx = mate_idx + 1
+        partners = mate_idx[:,:,:2]
+        destination = mate_idx[:,:,-1]
+        x_r = np.repeat(x,2 * population//2)
+        x_shifted = x_r + 1
+        dest_y = np.ravel(np.repeat(destination, 2,axis = 1,))
+        start_y =np.ravel(partners)
+        yy = np.array([start_y,dest_y])
+        xx = np.array([x_r,x_shifted])
+        lines = ax.plot(
+            xx,
+            yy,
+            color="grey",
+            marker="o",
+            alpha= 0.3,
+            label="_nolegend_",
+            zorder = 3
+        )
+        lines[0].set_label("family tree")
+    if type(dead_idx) == np.ndarray:
+        dead_idx = dead_idx + 1 
+        n_dead = dead_idx.shape[1]
+        x_scatter = np.repeat(x, n_dead)
+        y_scatter = np.ravel(dead_idx)
+        ax.scatter(
+            x_scatter,
+            y_scatter,
+            marker="X",
+            c="k",
+            label = "dead population members per sweep",
+            zorder = 4
+        )
+    ax.plot(
+        x,
+        history,
+        color = "r",
+        linewidth = 3,
+        label = "trajectory of best population ID",
+        zorder= 10
+    )
+    ax.set(
+        title=title,
+        xlabel=x_label,
+        ylabel="population ID"
+        )
+    #ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ax.set_yticks(
+        populations
+    )
+    ax.set_xticks(
+        x
+    )
+    ax.legend()
+    fig.tight_layout()
+
+    _save(fig,save_path)
+    return fig, ax
+
 
 
 def plot_population(
@@ -259,7 +384,7 @@ def plot_diagnostics(
 
     fig, axes = plt.subplots(2, 2, figsize=(10, 7))
     length_ax, temperature_ax, acceptance_ax, diversity_ax = axes.ravel()
-
+    length_ax.set_yscale("log")
     length_ax.plot(x, best, color="tab:red", label="best")
 
     if mean_history is not None:
@@ -295,8 +420,8 @@ def plot_diagnostics(
         acceptance_ax,
         acceptance_history,
         best.size,
-        "Acceptance rate",
-        "accepted / proposed",
+        "Subsequence shared",
+        "shared sequences > 100 ",
         "tab:green",
     )
     _optional_plot(

@@ -35,10 +35,13 @@ def plot_performance(results_dict:dict, dst_path="", time = "s"):
         fig, ax = plt.subplots(1,1, figsize=(10,10))
 
         times = np.asarray(value["times"], dtype=np.float64)
-        standard_deviation = np.asarray(
-            value["standard_deviation"],
-            dtype=np.float64
-        )
+        try:
+            standard_deviation = np.asarray(
+                value["standard_deviation"],
+                dtype=np.float64
+            )
+        except:
+            standard_deviation = np.zeros(times.shape)
 
         if time == "ms":
             times = times*10**3
@@ -240,17 +243,17 @@ def measure_performance():
     repeat = 10
     N_cities = np.arange(
         10,
-        500,
+        200,
         1,
         dtype=np.int32
         )
     population_sizes = np.arange(
         2,
-        80,
+        18,
         2,
         dtype=np.int32
         )
-    
+    print(population_sizes)
     nsweeps = 1
     performance_benchmark_path = os.path.join("..","results","performance_benchmark",f"run_{time_now}_{N_cities[-1]}_{population_sizes[-1]}")
         
@@ -836,7 +839,7 @@ def measure_performance():
                     benchmark_temperature_function,
                     lenght_m_current,
                     nsweeps,
-                    N_cities[i],
+                    N_cities[i]**2,
                     temp,
                     False,
                     False
@@ -852,41 +855,41 @@ def measure_performance():
     
         
     os.makedirs(performance_benchmark_path, exist_ok= True)
-    with Stdout_parse(folder=performance_benchmark_path, writing_type="a+"):
-            print_exectimes(
-                 N_cities,
-                 results["construct_D_matrix"]["times"],
-                 "tsp.construct_D_matrix()",
-                 variable_name="N_cities"
-                 )
-            print_exectimes(
-                         N_cities,
-                         results["calculate_total_distance_with_D"]["times"],
-                         "calculate_total_distance_with_D",
-                         variable_name="N_cities"
-                         )
-            print_exectimes(
-                             N_cities,
-                             results["annealing_step_Dmatrix"]["times"],
-                             "annealing_step_Dmatrix",
-                             variable_name="N_cities"
-                             )
-            for i, p in enumerate(population_sizes):
-                print(f"pop = {p}")
-                print_exectimes(
-                    results["choose_survivors_ids"]["N_cities"],
-                    results["choose_survivors_ids"]["times"][:,i],
-                    "choose_survivors_ids",
-                    variable_name="population"
-                )
-            for i, p in enumerate(population_sizes):
-                print(f"pop = {p}")
-                print_exectimes(
-                    results["mate_ids"]["N_cities"],
-                    results["mate_ids"]["times"][:,i],
-                    "mate_ids",
-                    variable_name="population"
-                )
+    #with Stdout_parse(folder=performance_benchmark_path, writing_type="a+"):
+    #        print_exectimes(
+    #             N_cities,
+    #             results["construct_D_matrix"]["times"],
+    #             "tsp.construct_D_matrix()",
+    #             variable_name="N_cities"
+    #             )
+    #        print_exectimes(
+    #                     N_cities,
+    #                     results["calculate_total_distance_with_D"]["times"],
+    #                     "calculate_total_distance_with_D",
+    #                     variable_name="N_cities"
+    #                     )
+    #        print_exectimes(
+    #                         N_cities,
+    #                         results["annealing_step_Dmatrix"]["times"],
+    #                         "annealing_step_Dmatrix",
+    #                         variable_name="N_cities"
+    #                         )
+    #        for i, p in enumerate(population_sizes):
+    #            print(f"pop = {p}")
+    #            print_exectimes(
+    #                results["choose_survivors_ids"]["N_cities"],
+    #                results["choose_survivors_ids"]["times"][:,i],
+    #                "choose_survivors_ids",
+    #                variable_name="population"
+    #            )
+    #        for i, p in enumerate(population_sizes):
+    #            print(f"pop = {p}")
+    #            print_exectimes(
+    #                results["mate_ids"]["N_cities"],
+    #                results["mate_ids"]["times"][:,i],
+    #                "mate_ids",
+    #                variable_name="population"
+    #            )
             
     results2 = {
             "mate_ids only highest N_cities": {
@@ -906,7 +909,34 @@ def measure_performance():
                 )[-1,:]
             }
         }
-    
+    results3 = {
+        "comparison normal annealing and pop 4,8,16": {
+            "population": np.array([1,2,4,16]),
+            "N_cities": N_cities,
+            "times": np.column_stack(
+                [
+                    np.array(results["annealing_D"]["times"]),
+                    np.array(results["mixed_annealing_D"]["times"])[:,0],
+                    np.array(results["mixed_annealing_D"]["times"])[:,1],
+                    np.array(results["mixed_annealing_D"]["times"])[:,-1]
+                ]
+            )
+        }
+    }
+    results4 = {
+            "comparison normal annealing and pop minus exectime of genetic": {
+                "population": np.array([1,2,4,16]),
+                "N_cities": N_cities,
+                "times": np.column_stack(
+                    [
+                        np.array(results["annealing_D"]["times"]),
+                        (np.array(results["mixed_annealing_D"]["times"])[:,0]  - (np.array(results["choose_survivors_ids"]["times"])[:,0] +np.array(results["mate_ids"]["times"])[:,0]))/2,
+                        (np.array(results["mixed_annealing_D"]["times"])[:,1]  - (np.array(results["choose_survivors_ids"]["times"])[:,1] +np.array(results["mate_ids"]["times"])[:,1]))/4,
+                        (np.array(results["mixed_annealing_D"]["times"])[:,-1] - (np.array(results["choose_survivors_ids"]["times"])[:,-1] +np.array(results["mate_ids"]["times"])[:,-1]))/16
+                    ]
+                )
+            }
+        }
     
     plot_performance(
         results,
@@ -919,7 +949,17 @@ def measure_performance():
         dst_path=performance_benchmark_path,
         time = "ms"
         )
-    
+    plot_performance(
+            results3,
+            dst_path=performance_benchmark_path,
+            time = "ms"
+            )
+    plot_performance(
+            results4,
+            dst_path=performance_benchmark_path,
+            time = "ms"
+            )
+            
     
     return
 

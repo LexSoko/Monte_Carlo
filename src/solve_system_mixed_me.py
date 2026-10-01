@@ -15,7 +15,7 @@ from solve_system import (
 )
 @nb.njit
 def temp_func_warmup(n,ids,lenght):
-    return 1000*(1/((n+1)*5)) + ids 
+    return 3000 - 5*(n+1)  + ids 
 def plot_quantities2(
         fig,
         ax,
@@ -143,7 +143,7 @@ def plot_quantity(
         twinx = False
         ):
     if fig == None and ax == None:
-        fig, ax = plt.subplots(1,1)
+        fig, ax = plt.subplots(1,1, figsize=(6,10))
 
     if twinx:
         axtwin = ax.twinx()
@@ -152,10 +152,37 @@ def plot_quantity(
     ax.set_xlabel(labels[0])
     ax.grid(axis="y", alpha=0.25)
     ax.legend()
-    if dy[0] != None:
-        ax.fill_between(x, y -dy , y + dy, label = r"$1\sigma$", alpha = 0.3)
+    #if dy[0] != None:
+    #    ax.fill_between(x, y -dy , y + dy, label = r"$1\sigma$", alpha = 0.3)
     fig.tight_layout()
     if save:
+        
+        legend = ax.get_legend()
+
+        if legend is not None:
+            legend.remove()
+        
+        # Remove an older figure legend if the function is called again.
+        for legend in list(fig.legends):
+            legend.remove()
+
+        # All population colors are the same across the subplots,
+        # so the handles from the <L> subplot are sufficient.
+        handles, labels = ax.get_legend_handles_labels()
+
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.995),
+            ncol=min(5, len(labels)),
+            fontsize=9,
+            frameon=False
+        )
+        fig.tight_layout(
+                    rect=[0, 0, 1, 0.85],
+                    h_pad=1.5
+                )
         fig.savefig(os.path.join(path,f"solved_system_{add_info}.pdf"))
 
     return fig, ax
@@ -169,8 +196,10 @@ def solve_system_with_mixed_TSP(
         nsweeps,
         population_size,
         mutations_per_sweep,
+        mutations_interval=1,
         warmup=1500,
-        detailed=False
+        detailed=False,
+        seed = 1234
 ):
     nsweeps = nsweeps - warmup
     N_cities = len(tours_ids)
@@ -185,8 +214,8 @@ def solve_system_with_mixed_TSP(
 
     Tour_id_matrix = tsp.create_diversity_ids(Tour_id_matrix, specific_population_members=[-1])
 
-    for p in range(1, population_size):
-        np.random.shuffle(Tour_id_matrix[p])
+    #for p in range(1, population_size):
+    #    np.random.shuffle(Tour_id_matrix[p])
 
     Lengths_0 = np.empty(population_size, dtype=np.float64)
     for p in range(population_size):
@@ -208,7 +237,7 @@ def solve_system_with_mixed_TSP(
         dtype=np.float64
     )
 
-    _,_,_,_ = tsp.mixed_annealing_D_const_T(
+    _,_,_,_ = tsp.mixed_annealing_D_const_T_2(
         Tour_id_matrix[:2],
         D,
         2,
@@ -217,8 +246,10 @@ def solve_system_with_mixed_TSP(
         0,
         1,
         1,
+        temperatures[0],
         True,
-        False
+        False,
+        seed
     )
     print(f"total expected iterations = {len(temperatures)}")
 
@@ -231,7 +262,7 @@ def solve_system_with_mixed_TSP(
             Lengths_warmup,
             temperatures_warmup,
             acceptance_warmup,
-        ) = tsp.mixed_annealing_D_const_T(
+        ) = tsp.mixed_annealing_D_const_T_2(
             Tour_id_matrix,
             D,
             population_size,
@@ -239,9 +270,11 @@ def solve_system_with_mixed_TSP(
             Lengths_0,
             warmup,
             mutations_per_sweep,
+            mutations_interval,
             const_temp=t,
             warm_up=True,
-            detailed=detailed
+            detailed=detailed,
+            seed=seed
         )
 
         Lengths_0 = Lengths_warmup[-1].copy()
@@ -251,7 +284,7 @@ def solve_system_with_mixed_TSP(
             Lengths,
             temperatures_mixed,
             acceptance_rate,
-        ) = tsp.mixed_annealing_D_const_T(
+        ) = tsp.mixed_annealing_D_const_T_2(
             Tour_id_matrix,
             D,
             population_size,
@@ -259,9 +292,11 @@ def solve_system_with_mixed_TSP(
             Lengths_0,
             nsweeps,
             mutations_per_sweep,
+            mutations_interval,
             const_temp=t,
             warm_up=False,
-            detailed=detailed
+            detailed=detailed,
+            seed=seed
         )
 
         Lengths_0 = Lengths[-1].copy()
@@ -277,19 +312,6 @@ def solve_system_with_mixed_TSP(
 
 
 
-def main2():
-    results_path = os.path.join("..","results","solve_system_N11")
-    plots_path = os.path.join(results_path,"plots")
-    perm_path = os.path.join(results_path,"permutation.npy")
-    path_cities = os.path.join(results_path,"city_pos.csv")
-    tour=tsp.create_cities(
-    11, 
-    low= -40,
-    high=40, 
-    seed= 30121999
-    )
-    if not os.path.exists(path_cities):
-        np.savetxt(path_cities,tour, delimiter=";")
 
 def main():
     results_path = os.path.join("..", "results", "solve_system_N11")
@@ -332,20 +354,26 @@ def main():
         tsp.euclidian_dist
     )
 
-    population_size = 40
-    mutations_attempts_per_sweep = len(tour_ids)
+    population_size = 16
+    mutations_attempts_per_sweep = len(tour_ids)**2
+    mutations_interval = 5
     nsweeps = 3000
-    warmup = 300
-    results_path = os.path.join(results_path,f"{nsweeps}_{warmup}_pop{population_size}_mut{mutations_attempts_per_sweep}")
+    warmup = 600
+    results_path = os.path.join(results_path,f"{nsweeps}_{warmup}_pop{population_size}_mut{mutations_attempts_per_sweep}_{mutations_interval}")
     plots_path = os.path.join(results_path,"plots")
     print(f"population size: {population_size}")
+    print(f"mutations per sweep: {mutations_attempts_per_sweep}")
+    print(f"mutations interval: {mutations_interval}")
+    print(f"nsweeps: {nsweeps}, warmup: {warmup}")
+    temperatures_tsp = temperatures[::10]
     data_TSP = solve_system_with_mixed_TSP(
         tour_ids,
         D,
-        temperatures,
+        temperatures_tsp,
         nsweeps=nsweeps,
         population_size=population_size,
         mutations_per_sweep=mutations_attempts_per_sweep,
+        mutations_interval=mutations_interval,
         warmup=warmup,
         detailed=False
     )
@@ -374,11 +402,11 @@ def main():
         L_mean = np.mean(L, axis=1)
         L_sq = np.mean(L**2, axis=1)
         variance = L_sq - L_mean**2
-        heat_capacity = variance / temperatures**2
+        heat_capacity = variance / temperatures_tsp**2
 
         data_population = np.array([
-            temperatures,
-            np.full(temperatures.shape, np.nan),
+            temperatures_tsp,
+            np.full(temperatures_tsp.shape, np.nan),
             L_mean,
             variance,
             heat_capacity,
@@ -411,8 +439,8 @@ def main():
             fig,
             ax,
             data_population[2:],
-            temperatures,
-            colums_population,
+            temperatures_tsp,
+            colums_population[1:],
             plots_path,
             t_lims,
             tsp=True,
@@ -424,7 +452,7 @@ def main():
         ax,
         data_solved[2:],
         temperatures,
-        colums,
+        colums[1:],
         plots_path,
         t_lims,
         save=True,
@@ -442,7 +470,7 @@ def main():
     for p in range(population_size):
         save_to_file_system_solved(
             np.column_stack((
-                temperatures,
+                temperatures_tsp,
                 acceptance_mean,
                 acceptance_variance
             )),
@@ -459,7 +487,7 @@ def main():
     fig_acceptance, ax_acceptance = plt.subplots(1, 1)
     for p in range(population_size):
         fig_acceptance, ax_acceptance = plot_quantity(
-            temperatures,
+            temperatures_tsp,
             acceptance_mean.T[p],
             dy=acceptance_variance.T[p],
             labels=[

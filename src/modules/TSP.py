@@ -130,6 +130,295 @@ def length_func(ordered_coordinates):
         length += np.floor(distance + 0.5)
 
     return length
+@nb.njit(cache=True)
+def subseq_dist_2(pop ,min_sq,max_sq):
+    pop_size = pop.shape[0]
+    corr1 = np.empty((pop_size,pop_size), dtype=np.int64)
+    maximial_sequence = max_sq
+    minimal_sequence = min_sq
+    pop = pop + 1
+    
+    pop1 = pop.copy()
+    pop2 = pop.copy()
+    matched = np.int64(0)
+    for i in range(pop_size):
+        p1 = pop1[i]
+        for j in range(i,pop_size):
+            p2 = pop2[j]
+            matched = np.int64(0)
+            
+            for a in range(pop.shape[1]):
+                shifted = p1 - np.roll(p2,a)
+                shifted_reversed = p1[::-1] -np.roll(p2,a)
+                
+                seq = 0
+                seq_r = 0
+                zeros = np.argwhere(shifted==0)
+                zeros_r = np.argwhere(shifted_reversed==0)
+              
+                if len(zeros) < minimal_sequence:
+                    continue
+                else:
+                    for n, zero in enumerate(zeros):
+                        
+                        if np.abs(zeros[(n+1)%len(zeros)]- zeros[n]) == 1:
+                           
+                            seq += 1
+                        else:
+                            seq = 0
+                        if minimal_sequence <= seq <= maximial_sequence:
+                            
+                            matched += 1
+                if len(zeros_r) < minimal_sequence:
+                    continue
+                else:
+                    for k, zero in enumerate(zeros_r):
+                        
+                        if np.abs(zeros_r[(k+1)%len(zeros_r)]- zeros_r[k]) == 1:
+                            
+                            seq_r += 1
+                        else:
+                            seq_r = 0
+                        if minimal_sequence <= seq_r <= maximial_sequence:
+                            matched += 1
+
+            corr1[i,j] = matched
+            corr1[j,i] = matched
+
+    
+    norm = pop.shape[0]*pop.shape[0]*(max_sq-min_sq)
+    likelyness = np.sum(corr1)/norm
+    rel_to_disorder = 1.0 - likelyness
+    return corr1, rel_to_disorder, likelyness
+@nb.njit(inline="always")
+def count_circular_runs(flags, min_sequence, max_sequence):
+    N = len(flags)
+
+    # Find a false value so a sequence crossing the array
+    # boundary is counted as one circular sequence.
+    start = -1
+
+    for i in range(N):
+        if flags[i] == 0:
+            start = i
+            break
+
+    # Every edge matches.
+    if start == -1:
+        if N < min_sequence:
+            return np.int64(0)
+
+        return np.int64(
+            min(N, max_sequence) - min_sequence + 1
+        )
+
+    matched = np.int64(0)
+    sequence = 0
+
+    for offset in range(1, N + 1):
+        i = (start + offset) % N
+
+        if flags[i] == 1:
+            sequence += 1
+        else:
+            if sequence >= min_sequence:
+                matched += (
+                    min(sequence, max_sequence)
+                    - min_sequence
+                    + 1
+                )
+
+            sequence = 0
+
+    return matched
+
+
+@nb.njit(cache=True)
+def subseq_dist_2_fast(pop, min_sq, max_sq):
+    population_size = pop.shape[0]
+    N_cities = pop.shape[1]
+
+    corr = np.empty(
+        (population_size, population_size),
+        dtype=np.int64
+    )
+
+    # For each city, store its next and previous city.
+    successor = np.empty(
+        (population_size, N_cities),
+        dtype=np.int32
+    )
+    predecessor = np.empty(
+        (population_size, N_cities),
+        dtype=np.int32
+    )
+
+    for p in range(population_size):
+        for i in range(N_cities):
+            city = pop[p, i]
+
+            successor[p, city] = pop[
+                p, (i + 1) % N_cities
+            ]
+            predecessor[p, city] = pop[
+                p, (i - 1) % N_cities
+            ]
+
+    forward_matches = np.empty(
+        N_cities,
+        dtype=np.uint8
+    )
+    reversed_matches = np.empty(
+        N_cities,
+        dtype=np.uint8
+    )
+
+    # The result is symmetric, so only calculate half.
+    for i in range(population_size):
+        p1 = pop[i]
+
+        for j in range(i, population_size):
+            for k in range(N_cities):
+                city = p1[k]
+                next_city = p1[(k + 1) % N_cities]
+
+                forward_matches[k] = (
+                    successor[j, city] == next_city
+                )
+
+                reversed_matches[k] = (
+                    predecessor[j, city] == next_city
+                )
+
+            matched = (
+                count_circular_runs(
+                    forward_matches,
+                    min_sq,
+                    max_sq
+                )
+                + count_circular_runs(
+                    reversed_matches,
+                    min_sq,
+                    max_sq
+                )
+            )
+
+            corr[i, j] = matched
+            corr[j, i] = matched
+
+    # Kept from your original definition.
+    norm = (
+        population_size
+        * population_size
+        * (max_sq - min_sq)
+    )
+
+    likelyness = np.sum(corr) / norm
+    rel_to_disorder = 1.0 - likelyness
+
+    return corr, rel_to_disorder, likelyness
+
+@nb.njit(cache=True)
+def mean_edge_diversity(pop):
+    population_size = pop.shape[0]
+    N_cities = pop.shape[1]
+
+    if population_size < 2:
+        return 0.0
+
+    # Store both neighbours of every city in every tour.
+    neighbours = np.empty(
+        (population_size, N_cities, 2),
+        dtype=np.int32
+    )
+
+    for p in range(population_size):
+        for i in range(N_cities):
+            city = pop[p, i]
+
+            neighbours[p, city, 0] = pop[
+                p, (i - 1) % N_cities
+            ]
+            neighbours[p, city, 1] = pop[
+                p, (i + 1) % N_cities
+            ]
+
+    total_diversity = 0.0
+    number_pairs = 0
+
+    for i in range(population_size):
+        for j in range(i + 1, population_size):
+            shared_edges = 0
+
+            for k in range(N_cities):
+                city_1 = pop[i, k]
+                city_2 = pop[i, (k + 1) % N_cities]
+
+                if (
+                    neighbours[j, city_1, 0] == city_2
+                    or neighbours[j, city_1, 1] == city_2
+                ):
+                    shared_edges += 1
+
+            pair_diversity = (
+                1.0 - shared_edges / N_cities
+            )
+
+            total_diversity += pair_diversity
+            number_pairs += 1
+
+    return total_diversity / number_pairs
+
+@nb.njit(cache=True)
+def mean_edge_diversity_matrix(pop):
+    population_size = pop.shape[0]
+    N_cities = pop.shape[1]
+    edge_matrix = np.empty((population_size,population_size), dtype=np.float64)
+    if population_size < 2:
+        return edge_matrix
+
+    # Store both neighbours of every city in every tour.
+    neighbours = np.empty(
+        (population_size, N_cities, 2),
+        dtype=np.int32
+    )
+
+    for p in range(population_size):
+        for i in range(N_cities):
+            city = pop[p, i]
+
+            neighbours[p, city, 0] = pop[
+                p, (i - 1) % N_cities
+            ]
+            neighbours[p, city, 1] = pop[
+                p, (i + 1) % N_cities
+            ]
+
+    number_pairs = population_size * population_size
+
+    for i in range(population_size):
+        for j in range(i + 1, population_size):
+            shared_edges = 0
+
+            for k in range(N_cities):
+                city_1 = pop[i, k]
+                city_2 = pop[i, (k + 1) % N_cities]
+
+                if (
+                    neighbours[j, city_1, 0] == city_2
+                    or neighbours[j, city_1, 1] == city_2
+                ):
+                    shared_edges += 1
+
+            pair_diversity = (
+                1.0 - shared_edges / N_cities
+            )
+            edge_matrix[i,j] = pair_diversity
+            edge_matrix[j,i] = pair_diversity
+            
+            
+
+    return edge_matrix / number_pairs
 
 def make_loop(new_path):
     """intended for plotting to close the gap between the start city and the end city
@@ -205,6 +494,35 @@ def annealing_step_Dmatrix(tour_ids,D,temperature,N_cities,Length):
         tour_ids = reverse_subsequence(tour_ids,a,b)
     return tour_ids,Length
 
+@nb.njit(inline='always', cache=True)
+def annealing_step_Dmatrix2(tour_ids,D,temperature,N_cities,Length):
+    r1 = np.random.randint(0, N_cities)
+    r2 = np.random.randint(0, N_cities)
+    
+    while r2 == r1:
+        r2 = np.random.randint(0, N_cities)
+    a = min(r1, r2)
+    b = max(r1, r2)
+    if a == 0 and b == N_cities -1:
+        return tour_ids,Length
+    id_a_minus_one =  tour_ids[(a-1)%N_cities]
+    id_a = tour_ids[a]
+    id_b_plus_one = tour_ids[(b+1)%N_cities]
+    id_b = tour_ids[b] 
+    
+    dL = D[id_a_minus_one,id_b] - D[id_a_minus_one,id_a] + D[id_b_plus_one,id_a] -D[id_b_plus_one,id_b]
+    
+    U = np.random.random()
+    accept = dL <= 0.0
+    if not accept and temperature > 0.0:
+        accept = (
+            U < np.exp(-dL/temperature)
+        )
+    
+    if accept:
+        Length = Length + dL
+        tour_ids = reverse_subsequence(tour_ids,a,b)
+    return tour_ids,Length
 @nb.njit(cache=True)
 def annealing_D(
         tour_ids,
@@ -421,7 +739,8 @@ def mutation_genetic(
     return cities_pos_pop
 
    
-@nb.njit(inline='always')
+
+@nb.njit(inline='always', cache=True)
 def choose_survivors_ids(old_generation,lenghts,population_size, N_cities):
     """
     chooses random pairs of the population and compares them
@@ -452,8 +771,224 @@ def choose_survivors_ids(old_generation,lenghts,population_size, N_cities):
    
     return survivors , survivor_lengths
 
+
+
 @nb.njit(inline='always', cache=True)
-def mate_ids(survivors, N_cities,  D_matrix):
+def mate_ids2(survivors, N_cities,  D_matrix , surviving_ids, dead_ids  ):
+    """
+    the kinky part of the algorithm
+    chooses random pairs of a population and exchanges the genetic information
+    a sub sequence of the path of each parent is taken out and injected into the other one
+    the other citys are rearanged to incorparate the subsequence path
+
+    Args:
+        survivors (np.ndarray): survivors of the battle to the death
+
+    Returns:
+        np.ndarray: new population double the survivors
+    """
+    #unique_ids[dead_ids] = ""
+    N_survivors = len(survivors)
+    mating_ids = np.empty((N_survivors,3))
+    offspring = np.empty((N_survivors*2, N_cities), dtype=np.int32)
+    for n ,surv_id in enumerate(surviving_ids):
+        offspring[surv_id] = survivors[n]
+    
+    indices = np.arange(N_survivors, dtype=np.int32)
+    np.random.shuffle(indices)  
+    pairs = np.zeros((N_survivors, 2), dtype=np.int32)
+
+    for i in range(0, N_survivors - 1, 2):
+        pairs[i] = (indices[i], indices[i + 1])
+        pairs[i + 1] = (indices[i + 1], indices[i])
+
+    for n, (i , j) in enumerate(pairs):
+        mating_ids[n][0] = surviving_ids[i]
+        mating_ids[n][1] = surviving_ids[j]
+        mating_ids[n][2] = dead_ids[n]
+        dominant_genom = i
+        r1 = np.random.randint(0, N_cities)
+        r2 = np.random.randint(0, N_cities)
+        while r2 == r1:
+            r2 = np.random.randint(0, N_cities)
+        a = min(r1, r2)
+        b = max(r1, r2)
+        if a == 0 and b == N_cities - 1:
+            a = a + 1 
+            b = b - 1
+        if abs(a-b) < N_cities//2:
+            dominant_genom = j
+
+        
+        sub_path_i = list(survivors[i][a:b])
+        remaining_path_j = np.empty(N_cities - len(sub_path_i),dtype=np.int32)
+        
+        count = 0
+        
+        for item in survivors[j]:
+            found = False
+            for sub_item in sub_path_i:
+                if item == sub_item:
+                    
+                    found = True
+                    break
+            if not found:
+                remaining_path_j[count] = item
+                count += 1
+            
+        remaining_path_j = list(remaining_path_j)
+        
+        for k in range(0, N_cities):
+            if a <= k < b:
+                offspring[dead_ids[n],k] = sub_path_i.pop(0)
+                
+            else:
+                offspring[dead_ids[n],k] = remaining_path_j.pop(0)
+            #unique_ids[dead_ids[n]]
+
+    offspring_lengths = np.empty(N_survivors*2,dtype=np.float64)
+    
+    for kid in range(N_survivors*2):
+        offspring_lengths[kid] = calculate_total_distance_with_D(D_matrix,offspring[kid])
+
+    return offspring , offspring_lengths , mating_ids
+
+@nb.njit(cache=True)
+def choose_survivors_ids2(old_generation,lenghts,population_size, N_cities):
+    """
+    chooses random pairs of the population and compares them
+    the one which has the shorter path survives.
+    kind of a battle to the death in the colosseum as i imagine it
+
+    Args:
+        old_generation (np.ndarray): old population
+        lenghts (np.ndarray): lenghts of old population
+
+    Returns:
+        np.ndarray: survivors half of the old population
+    """
+    mid = population_size//2
+    indeces = np.arange(0,population_size)
+    np.random.shuffle(indeces)
+    #unique_ids = unique_ids[indeces]
+    #old_generation = old_generation[indeces]
+    #lenghts = lenghts[indeces]
+    survivor_lengths = np.empty((mid,N_cities), dtype=np.float64)
+    survivors = np.empty((mid,N_cities),dtype=np.int32)
+    pairs = np.zeros((mid, 2), dtype=np.int32)
+    surviving_ids = np.empty(mid, dtype=np.int32)
+    dead_ids = np.empty(mid, dtype=np.int32)
+    
+    for i in range(0, population_size-1, 2):
+            pairs[i//2] = (indeces[i], indeces[i + 1])
+    
+    for n, (i , j) in enumerate(pairs):
+        if lenghts[i] < lenghts[j]:
+            survivors[n] = old_generation[i]
+            survivor_lengths[n] = lenghts[i]
+            surviving_ids[n] = i    
+            dead_ids[n] = j     
+        else:
+            survivors[n] = old_generation[j]
+            survivor_lengths[n] = lenghts[j]
+            surviving_ids[n] = j
+            dead_ids[n] = i
+    
+            
+   
+    return survivors , survivor_lengths , surviving_ids, dead_ids
+
+@nb.njit(inline='always', cache=True)
+def mate_ids3(survivors, N_cities,  D_matrix , surviving_ids, dead_ids  ):
+    """
+    the kinky part of the algorithm
+    chooses random pairs of a population and exchanges the genetic information
+    a sub sequence of the path of each parent is taken out and injected into the other one
+    the other citys are rearanged to incorparate the subsequence path
+
+    Args:
+        survivors (np.ndarray): survivors of the battle to the death
+
+    Returns:
+        np.ndarray: new population double the survivors
+    """
+    #unique_ids[dead_ids] = ""
+    N_survivors = len(survivors)
+    mating_ids = np.empty((N_survivors,3))
+    offspring = np.empty((N_survivors*2, N_cities), dtype=np.int32)
+    for n ,surv_id in enumerate(surviving_ids):
+        offspring[surv_id] = survivors[n]
+    edge_matrix = mean_edge_diversity_matrix(survivors)
+
+    idx = np.argsort(edge_matrix.ravel())[::-1]
+
+    n_cols = edge_matrix.shape[1]
+
+    i_div = idx // n_cols
+    j_div = idx % n_cols
+    #t = 0
+    #i_uniq = np.empty(N_survivors)
+    #j_uniq = np.empty(N_survivors)
+    #for l , k in zip(i_div,j_div):
+
+    pairs = np.zeros((N_survivors, 2), dtype=np.int32)
+
+    for i in range(0, N_survivors):
+        pairs[i] = (i_div[i], j_div[i])
+        
+
+    for n, (i , j) in enumerate(pairs):
+        mating_ids[n][0] = surviving_ids[i]
+        mating_ids[n][1] = surviving_ids[j]
+        mating_ids[n][2] = dead_ids[n]
+        dominant_genom = i
+        r1 = np.random.randint(0, N_cities)
+        r2 = np.random.randint(0, N_cities)
+        while r2 == r1:
+            r2 = np.random.randint(0, N_cities)
+        a = min(r1, r2)
+        b = max(r1, r2)
+        if a == 0 and b == N_cities - 1:
+            a = a + 1 
+            b = b - 1
+        if abs(a-b) < N_cities//2:
+            dominant_genom = j
+
+        
+        sub_path_i = list(survivors[i][a:b])
+        remaining_path_j = np.empty(N_cities - len(sub_path_i),dtype=np.int32)
+        
+        count = 0
+        
+        for item in survivors[j]:
+            found = False
+            for sub_item in sub_path_i:
+                if item == sub_item:
+                    
+                    found = True
+                    break
+            if not found:
+                remaining_path_j[count] = item
+                count += 1
+            
+        remaining_path_j = list(remaining_path_j)
+        
+        for k in range(0, N_cities):
+            if a <= k < b:
+                offspring[dead_ids[n],k] = sub_path_i.pop(0)
+                
+            else:
+                offspring[dead_ids[n],k] = remaining_path_j.pop(0)
+            #unique_ids[dead_ids[n]]
+
+    offspring_lengths = np.empty(N_survivors*2,dtype=np.float64)
+    
+    for kid in range(N_survivors*2):
+        offspring_lengths[kid] = calculate_total_distance_with_D(D_matrix,offspring[kid])
+
+    return offspring , offspring_lengths , mating_ids
+@nb.njit(inline='always', cache=True)
+def mate_ids(survivors, N_cities,  D_matrix ):
     """
     the kinky part of the algorithm
     chooses random pairs of a population and exchanges the genetic information
@@ -479,8 +1014,8 @@ def mate_ids(survivors, N_cities,  D_matrix):
         pairs[i + 1] = (indices[i + 1], indices[i])
 
     for n, (i , j) in enumerate(pairs):
-        a = np.random.randint(0,N_cities - 1)
-        b = np.random.randint(a,N_cities)
+        a = np.random.randint(0, N_cities -1)
+        b = np.random.randint(a, N_cities)
        
         sub_path_i = list(survivors[i][a:b])
         remaining_path_j = np.empty(N_cities - len(sub_path_i),dtype=np.int32)
@@ -508,15 +1043,11 @@ def mate_ids(survivors, N_cities,  D_matrix):
                 offspring[n+N_survivors,k] = remaining_path_j.pop(0)
 
     offspring_lengths = np.empty(N_survivors*2,dtype=np.float64)
+    
     for kid in range(N_survivors*2):
-        length = 0
-        for n_c in range(N_cities):
-            length += D_matrix[offspring[kid][n_c],offspring[kid][(n_c+1)%N_cities]]
-        offspring_lengths[kid] = length
+        offspring_lengths[kid] = calculate_total_distance_with_D(D_matrix,offspring[kid])
 
     return offspring , offspring_lengths
-
-
 
 
 @nb.njit(parallel=True, cache=True)
@@ -525,19 +1056,30 @@ def mixed_annealing_D(
         D,
         population_size,
         temperature_function,
-        Lengths_0,
-        n_sweeps
+        interval_mutation,
+        n_sweeps,
+        save_dead_IDs,
+        save_mating_IDs,
+        seed
 ):
     N_cities = Tour_ID_Matrix.shape[1]
     N_cities_sq = N_cities**2
-    
+    N_cities_tripple = N_cities*3
 
+    dead_ids_sweep = np.empty((n_sweeps,population_size//2),dtype=np.int32)
+    mating_ids_sweep = np.empty((n_sweeps,population_size//2,3),dtype=np.int32)
     
+    Lengths = np.empty((n_sweeps+1,population_size),dtype=np.float64)
+
+    #for i in range(population_size):
+    #    Lengths[0][i] = Lengths_0[i]
     
-    Lengths = np.empty((n_sweeps+1,population_size),dtype=np.float32)
+    Tour_ID_Matrix = create_diversity_ids(Tour_ID_Matrix, [-1])
+    Tour_ID_Matrix_sweep = np.empty((n_sweeps+1,population_size,N_cities), np.int32)
+    Tour_ID_Matrix_sweep[0] = Tour_ID_Matrix
 
     for i in range(population_size):
-        Lengths[0][i] = Lengths_0[i]
+        Lengths[0][i] = calculate_total_distance_with_D(D,Tour_ID_Matrix[i])
 
     temperatures = np.empty(n_sweeps+1,dtype=np.float32)
     
@@ -549,101 +1091,59 @@ def mixed_annealing_D(
             )
         
         current_lengths = Lengths[n].copy()
-        survivors, survivor_lengths = choose_survivors_ids(
-                    Tour_ID_Matrix,
-                    current_lengths,
-                    population_size,
-                    N_cities
+        
+        if n != 0:
+            np.random.seed(seed + n)
+            survivors , survivor_lengths , surviving_ids, dead_ids = choose_survivors_ids2(
+                        Tour_ID_Matrix,
+                        Lengths[n].copy(),
+                        population_size,
+                        N_cities
+                        )   
+            Tour_ID_Matrix, current_lengths, mating_ids = mate_ids3(
+                        survivors,
+                        N_cities,
+                        D,
+                        surviving_ids,
+                        dead_ids
                     )
-        Tour_ID_Matrix, new_generation_length = mate_ids(
-            survivors,
-            N_cities,
-            D
-            )
-        current_lengths = new_generation_length
-        for p in nb.prange(population_size):
-            current_L = current_lengths[p]
-            for _ in range(N_cities_sq):
-            
-                Tour_ID_Matrix[p], current_L =annealing_step_Dmatrix(
-                    Tour_ID_Matrix[p],
-                    D,
-                    temperature,
-                    N_cities,
-                    current_L
-                    )
-            current_lengths[p] = current_L
+            if save_dead_IDs == True:
+                dead_ids_sweep[n] = dead_ids
+            if save_mating_IDs == True:
+                mating_ids_sweep[n] = mating_ids
+        #current_lengths = new_generation_length
+        if n % interval_mutation == 0:
+            for p in nb.prange(population_size):
+                np.random.seed(
+                    seed
+                    + 1_000_000
+                    + n * population_size
+                    + p
+                )
+                current_L = current_lengths[p]
+                for _ in range(N_cities_sq):
+                
+                    Tour_ID_Matrix[p], current_L =annealing_step_Dmatrix(
+                        Tour_ID_Matrix[p],
+                        D,
+                        temperature,
+                        N_cities,
+                        current_L
+                        )
+                current_lengths[p] = current_L
         
         Lengths[n+1] = current_lengths
         temperatures[n] = temperature
+        Tour_ID_Matrix_sweep[n+1] = Tour_ID_Matrix
     if n_sweeps != 0:
         temperatures[-1] = temperatures[-2]
     
-    return Tour_ID_Matrix,Lengths, temperatures
+    return Tour_ID_Matrix,Lengths, temperatures, Tour_ID_Matrix_sweep, dead_ids_sweep, mating_ids_sweep
 
-@nb.njit(parallel=True)
-def mixed_annealing_D_after(
-        Tour_ID_matrix,
-        D,
-        population_size,
-        temperature_function,
-        Lengths_0,
-        n_sweeps
-):
-    N_cities = Tour_ID_matrix.shape[1]
-    N_cities_sq = N_cities**2
-    
-
-    
-    
-    Lengths = np.empty((n_sweeps+1,population_size),dtype=np.float32)
-
-    for i in range(population_size):
-        Lengths[0][i] = Lengths_0[i]
-
-    temperatures = np.empty(n_sweeps+1,dtype=np.float32)
-    
-    for n in range(n_sweeps):
-        temperature = temperature_function(
-            n,
-            Tour_ID_matrix,
-            Lengths[n,0]
-            )
-        
-        current_lengths = Lengths[n].copy()
-        for p in nb.prange(population_size):
-            current_L = current_lengths[p]
-            for _ in range(N_cities_sq):
-            
-                Tour_ID_matrix[p], current_L =annealing_step_Dmatrix(
-                    Tour_ID_matrix[p],
-                    D,
-                    temperature,
-                    N_cities,
-                    current_L
-                    )
-            current_lengths[p] = current_L
-        survivors, survivor_lengths = choose_survivors_ids(
-            Tour_ID_matrix,
-            current_lengths,
-            population_size,
-            N_cities
-            )
-        Tour_ID_matrix, new_generation_length = mate_ids(
-            survivors,
-            N_cities,
-            D
-            )
-        Lengths[n+1] = new_generation_length
-        temperatures[n] = temperature
-    if n_sweeps != 0:
-        temperatures[-1] = temperatures[-2]
-    
-    return Tour_ID_matrix,Lengths, temperatures
 
 @nb.njit(parallel=True, cache=True)
 def mixed_annealing_D_const_T(
-        Tour_ID_matrix,
+        Tour_ID_Matrix,
         D,
         population_size,
         temperature_function,
@@ -652,9 +1152,9 @@ def mixed_annealing_D_const_T(
         mutations_per_sweep,
         const_temp,
         warm_up,
-        detailed
+        detailed,
 ):
-    N_cities = Tour_ID_matrix.shape[1]
+    N_cities = Tour_ID_Matrix.shape[1]
 
     Lengths = np.empty(
         (n_sweeps + 1, population_size),
@@ -683,18 +1183,32 @@ def mixed_annealing_D_const_T(
                 Lengths[n]
             )
 
-        survivors, survivor_lengths = choose_survivors_ids(
-            Tour_ID_matrix,
+        #survivors, survivor_lengths = choose_survivors_ids(
+        #    Tour_ID_Matrix,
+        #    Lengths[n].copy(),
+        #    population_size,
+        #    N_cities
+        #)
+        #Tour_ID_Matrix, current_lengths = mate_ids(
+                #    survivors,
+                #    N_cities,
+                #    D
+                #)
+        survivors , survivor_lengths , surviving_ids, dead_ids = choose_survivors_ids2(
+            Tour_ID_Matrix,
             Lengths[n].copy(),
             population_size,
             N_cities
-        )
-        Tour_ID_matrix, current_lengths = mate_ids(
-            survivors,
-            N_cities,
-            D
-        )
-
+            )
+        
+        
+        Tour_ID_Matrix, current_lengths = mate_ids2(
+                    survivors,
+                    N_cities,
+                    D,
+                    surviving_ids,
+                    dead_ids
+                )
         for p in nb.prange(population_size):
             current_L = current_lengths[p]
             accepted_moves = 0
@@ -712,10 +1226,10 @@ def mixed_annealing_D_const_T(
                 if a == 0 and b == N_cities - 1:
                     continue
 
-                id_a_minus_one = Tour_ID_matrix[p, (a - 1) % N_cities]
-                id_a = Tour_ID_matrix[p, a]
-                id_b_plus_one = Tour_ID_matrix[p, (b + 1) % N_cities]
-                id_b = Tour_ID_matrix[p, b]
+                id_a_minus_one = Tour_ID_Matrix[p, (a - 1) % N_cities]
+                id_a = Tour_ID_Matrix[p, a]
+                id_b_plus_one = Tour_ID_Matrix[p, (b + 1) % N_cities]
+                id_b = Tour_ID_Matrix[p, b]
 
                 dL = (
                     D[id_a_minus_one, id_b]
@@ -733,8 +1247,8 @@ def mixed_annealing_D_const_T(
 
                 if accept:
                     current_L += dL
-                    Tour_ID_matrix[p] = reverse_subsequence(
-                        Tour_ID_matrix[p],
+                    Tour_ID_Matrix[p] = reverse_subsequence(
+                        Tour_ID_Matrix[p],
                         a,
                         b
                     )
@@ -754,13 +1268,154 @@ def mixed_annealing_D_const_T(
         temperatures[-1] = temperatures[-2]
 
     return (
-        Tour_ID_matrix,
+        Tour_ID_Matrix,
         Lengths,
         temperatures,
         acceptance_rate,
     )
 
+@nb.njit(parallel=True, cache=True)
+def mixed_annealing_D_const_T_2(
+        Tour_ID_Matrix,
+        D,
+        population_size,
+        temperature_function,
+        Lengths_0,
+        n_sweeps,
+        mutations_per_sweep,
+        mutations_interval,
+        const_temp,
+        warm_up,
+        detailed,
+        seed
+):
+    N_cities = Tour_ID_Matrix.shape[1]
 
+    Lengths = np.empty(
+        (n_sweeps + 1, population_size),
+        dtype=np.float32
+    )
+    Lengths[0] = Lengths_0
+
+    temperatures = np.empty(n_sweeps + 1, dtype=np.float32)
+    acceptance_rate = np.empty((n_sweeps,population_size), dtype=np.float64)
+    accepted_population = np.empty(population_size, dtype=np.int64)
+
+    for n in range(n_sweeps):
+        if const_temp >= 0.0:
+            if warm_up:
+                temperature = temperature_function(
+                    n,
+                    const_temp,
+                    Lengths[n]
+                )
+            else:
+                temperature = const_temp
+        else:
+            temperature = temperature_function(
+                n,
+                const_temp,
+                Lengths[n]
+            )
+
+        #survivors, survivor_lengths = choose_survivors_ids(
+        #    Tour_ID_Matrix,
+        #    Lengths[n].copy(),
+        #    population_size,
+        #    N_cities
+        #)
+        #Tour_ID_Matrix, current_lengths = mate_ids(
+                #    survivors,
+                #    N_cities,
+                #    D
+                #)
+        np.random.seed(seed + n)
+        survivors , survivor_lengths , surviving_ids, dead_ids = choose_survivors_ids2(
+            Tour_ID_Matrix,
+            Lengths[n].copy(),
+            population_size,
+            N_cities
+            )
+        
+        
+        Tour_ID_Matrix, current_lengths, _ = mate_ids2(
+                    survivors,
+                    N_cities,
+                    D,
+                    surviving_ids,
+                    dead_ids
+                )
+        if n % mutations_interval == 0:
+            for p in nb.prange(population_size):
+                np.random.seed(
+                                    seed
+                                    + 1_000_000
+                                    + n * population_size
+                                    + p
+                                )
+                current_L = current_lengths[p]
+                accepted_moves = 0
+
+                for _ in range(mutations_per_sweep):
+                    r1 = np.random.randint(0, N_cities)
+                    r2 = np.random.randint(0, N_cities)
+
+                    while r2 == r1:
+                        r2 = np.random.randint(0, N_cities)
+
+                    a = min(r1, r2)
+                    b = max(r1, r2)
+
+                    if a == 0 and b == N_cities - 1:
+                        continue
+
+                    id_a_minus_one = Tour_ID_Matrix[p, (a - 1) % N_cities]
+                    id_a = Tour_ID_Matrix[p, a]
+                    id_b_plus_one = Tour_ID_Matrix[p, (b + 1) % N_cities]
+                    id_b = Tour_ID_Matrix[p, b]
+
+                    dL = (
+                        D[id_a_minus_one, id_b]
+                        - D[id_a_minus_one, id_a]
+                        + D[id_b_plus_one, id_a]
+                        - D[id_b_plus_one, id_b]
+                    )
+
+                    accept = dL <= 0.0
+                    if not accept and temperature > 0.0:
+                        accept = (
+                            np.random.random()
+                            < np.exp(-dL / temperature)
+                        )
+
+                    if accept:
+                        current_L += dL
+                        Tour_ID_Matrix[p] = reverse_subsequence(
+                            Tour_ID_Matrix[p],
+                            a,
+                            b
+                        )
+                        accepted_moves += 1
+
+                current_lengths[p] = current_L
+                accepted_population[p] = accepted_moves
+                acceptance_rate[n,p] = (
+                    accepted_population[p]
+                    / (mutations_per_sweep)
+                )
+
+        Lengths[n + 1] = current_lengths
+        temperatures[n] = temperature
+
+    if n_sweeps != 0:
+        temperatures[-1] = temperatures[-2]
+
+    return (
+        Tour_ID_Matrix,
+        Lengths,
+        temperatures,
+        acceptance_rate,
+    )
     
 @nb.njit()
 def euclidian_dist(city1,city2):
@@ -951,15 +1606,15 @@ def run_mixed(
     #    Tour_id_matrix = np.empty((POPULATION_SIZE,N_cities),dtype=np.int16)
     #else:
     tour_ids = np.arange(0,N_cities,dtype=np.int32)
-    Tour_id_matrix = np.empty((POPULATION_SIZE,N_cities),dtype=np.int32)
+    Tour_ID_Matrix = np.empty((POPULATION_SIZE,N_cities),dtype=np.int32)
     for n_p in range(POPULATION_SIZE):
-        Tour_id_matrix[n_p] = tour_ids
+        Tour_ID_Matrix[n_p] = tour_ids
         Lengths[n_p] = starting_length
-    print("Input dtype:", Tour_id_matrix.dtype)
+    print("Input dtype:", Tour_ID_Matrix.dtype)
     if WARM_UP_NUMBA:
         seed_numba(BASE_RANDOM_SEED)
         mixed_annealing_D(
-            Tour_id_matrix,
+            Tour_ID_Matrix,
             distance_matrix,
             POPULATION_SIZE,
             temp_func,
@@ -973,7 +1628,7 @@ def run_mixed(
 
         start_time = perf_counter()
         final_population, length_history, temperatures = mixed_annealing_D(
-            Tour_id_matrix,
+            Tour_ID_Matrix,
             distance_matrix,
             POPULATION_SIZE,
             temp_func,
@@ -981,8 +1636,8 @@ def run_mixed(
             NUMBER_OF_SWEEPS,
         )
         
-        Tour_id_matrix = final_population.copy()
-        print("Input dtype:", Tour_id_matrix.dtype)
+        Tour_ID_Matrix = final_population.copy()
+        print("Input dtype:", Tour_ID_Matrix.dtype)
         Lengths = length_history[-1]
 
         runtime = perf_counter() - start_time
@@ -1065,6 +1720,65 @@ def run_mixed(
     }
 
 
+@nb.njit(parallel=True)
+def mixed_annealing_D_after(
+        Tour_ID_Matrix,
+        D,
+        population_size,
+        temperature_function,
+        Lengths_0,
+        n_sweeps
+):
+    N_cities = Tour_ID_Matrix.shape[1]
+    N_cities_sq = N_cities**2
+    
+
+    
+    
+    Lengths = np.empty((n_sweeps+1,population_size),dtype=np.float32)
+
+    for i in range(population_size):
+        Lengths[0][i] = Lengths_0[i]
+
+    temperatures = np.empty(n_sweeps+1,dtype=np.float32)
+    
+    for n in range(n_sweeps):
+        temperature = temperature_function(
+            n,
+            Tour_ID_Matrix,
+            Lengths[n,0]
+            )
+        
+        current_lengths = Lengths[n].copy()
+        for p in nb.prange(population_size):
+            current_L = current_lengths[p]
+            for _ in range(N_cities_sq):
+            
+                Tour_ID_Matrix[p], current_L =annealing_step_Dmatrix(
+                    Tour_ID_Matrix[p],
+                    D,
+                    temperature,
+                    N_cities,
+                    current_L
+                    )
+            current_lengths[p] = current_L
+        survivors, survivor_lengths = choose_survivors_ids(
+            Tour_ID_Matrix,
+            current_lengths,
+            population_size,
+            N_cities
+            )
+        Tour_ID_Matrix, new_generation_length = mate_ids(
+            survivors,
+            N_cities,
+            D
+            )
+        Lengths[n+1] = new_generation_length
+        temperatures[n] = temperature
+    if n_sweeps != 0:
+        temperatures[-1] = temperatures[-2]
+    
+    return Tour_ID_Matrix,Lengths, temperatures
 
 
 @deprecated("This function has been deprecated")

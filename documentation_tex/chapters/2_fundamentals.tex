@@ -1,4 +1,4 @@
-\section{fundamentals}
+\section{Fundamentals}
 
 
 
@@ -6,7 +6,9 @@
 
 
 \subsection{Computational Complexity and Algorithmic Approaches}
-The factorial scaling of the TSP, given by $N!$ distinct routes, renders brute-force methods impractical beyond small system sizes. Exact algorithms, such as the \textit{Held-Karp dynamic programming approach}, provide solutions but require exponential computational resources, limiting their applicability. As a result, most practical implementations rely on \textit{heuristic and approximation algorithms}, which yield near-optimal solutions at significantly reduced computational cost.
+The factorial scaling of the symmetric TSP, given by $(N-1)!/2$ distinct routes, renders brute-force methods impractical beyond small system sizes. 
+Exact algorithms, such as the \textit{Held-Karp dynamic programming approach}, provide solutions but require exponential computational resources, limiting their applicability. 
+As a result, most practical implementations rely on \textit{heuristic and approximation algorithms}, which yield near-optimal solutions at significantly reduced computational cost.
 
 Among the most effective heuristic methods are:
 
@@ -31,6 +33,36 @@ Beyond applied optimization, the TSP is frequently utilized as a \textit{benchma
 
 \subsection{Theoretical Significance}
 The TSP holds deep implications in computational complexity theory, particularly in relation to the \textit{P vs NP problem}. As an NP-hard problem, the TSP is unlikely to have a polynomial-time solution unless \( P = NP \), a hypothesis that remains one of the most significant open questions in theoretical computer science. A resolution to this problem would not only transform computational mathematics but also have profound consequences for cryptography, artificial intelligence, and algorithmic research.
+
+\subsection{Timeseries Analysis}
+\subsubsection{Autocorrelation and effective sample size}
+Autocorrelation measures the correlation of a signal with a delayed copy of itself. 
+
+The analysis of autocorrelation is a mathematical tool for identifying repeating patterns or hidden periodicities within a signal obscured by noise.
+
+In the context of Monte Carlo time series, it is used to measure how strongly successive stationary observables $A_n$ are correlated with each other.
+
+The autocorrelation function for a stationary observable is defined as
+\begin{equation}
+    C_A (t) = \frac{\mathbb{E}[A_n, A_{n+1}] - \mathbb{E}[A]^2}{\sigma_A^2}
+    \label{eq:autocorrelation_func}
+\end{equation}
+The integrated autocorrelation time is convention dependend. Using the lecture convention:
+\begin{equation}
+    \tau_{\mathrm{int}} = \frac{1}{2} + \sum_{t=1}^{\infty} C_A (t)
+    \label{eq:autocorrelation_time}
+\end{equation}
+For $N$ >> $\tau_{\mathrm{int}}$ the variance of the observables mean $\bar{A}$ can be defined as:
+\begin{equation}
+    \mathrm{Var}(\bar{A}) = \frac{2 \tau_{\mathrm{int}}}{N} \sigma_A^2
+    \label{eq:variance_mean}
+\end{equation}
+
+\subsubsection{Blocking}
+The ordered series is split into consecutive blocks of length B, each block is replaced by its mean. When $B$ >> $\tau_{\mathrm{int}}$, block means are approximately independent and
+the estimated error reaches a plateau. Randomly shuffling first would destroy the time-correlation
+information.
+
 
 
 

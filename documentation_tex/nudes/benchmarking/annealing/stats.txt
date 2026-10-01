@@ -1,0 +1,97 @@
+min per population member
+pop 0: 18967973.0 reached at sweep: 714
+pop 1: 18957187.0 reached at sweep: 952
+pop 2: 18967973.0 reached at sweep: 726
+pop 3: 18973356.0 reached at sweep: 740
+pop 4: 18955936.0 reached at sweep: 946
+pop 5: 18967973.0 reached at sweep: 747
+pop 6: 18969390.0 reached at sweep: 592
+pop 7: 18973356.0 reached at sweep: 736
+pop 8: 18967449.0 reached at sweep: 826
+pop 9: 18967973.0 reached at sweep: 775
+pop 10: 18967973.0 reached at sweep: 745
+pop 11: 18967449.0 reached at sweep: 888
+pop 12: 18967973.0 reached at sweep: 756
+pop 13: 18967973.0 reached at sweep: 613
+pop 14: 18967869.0 reached at sweep: 815
+pop 15: 18967869.0 reached at sweep: 793
+pop 16: 18967973.0 reached at sweep: 700
+pop 17: 18967973.0 reached at sweep: 736
+pop 18: 18967973.0 reached at sweep: 727
+pop 19: 18967973.0 reached at sweep: 726
+946
+pop 0 lenght at 945= 19871659.0, 946= 19614263.0 947= 20984993.0
+pop 1 lenght at 945= 18968182.0, 946= 18968361.0 947= 18968361.0
+pop 2 lenght at 945= 19038051.0, 946= 19037482.0 947= 19037482.0
+pop 3 lenght at 945= 22005612.0, 946= 19248322.0 947= 19248322.0
+pop 4 lenght at 945= 18968527.0, 946= 18955936.0 947= 18955936.0
+pop 5 lenght at 945= 20676746.0, 946= 19299396.0 947= 19299396.0
+pop 6 lenght at 945= 20069931.0, 946= 19507148.0 947= 19507148.0
+pop 7 lenght at 945= 20649405.0, 946= 19885408.0 947= 20021751.0
+pop 8 lenght at 945= 21001122.0, 946= 19513257.0 947= 21407409.0
+pop 9 lenght at 945= 18975367.0, 946= 18976329.0 947= 18976329.0
+pop 10 lenght at 945= 20758698.0, 946= 19415573.0 947= 19874458.0
+pop 11 lenght at 945= 20045354.0, 946= 19171712.0 947= 19171712.0
+pop 12 lenght at 945= 19092517.0, 946= 19066692.0 947= 19066692.0
+pop 13 lenght at 945= 21018477.0, 946= 20507574.0 947= 20925409.0
+pop 14 lenght at 945= 18998150.0, 946= 18998510.0 947= 18998510.0
+pop 15 lenght at 945= 22112348.0, 946= 19682406.0 947= 21482225.0
+pop 16 lenght at 945= 19919848.0, 946= 19325001.0 947= 21216739.0
+pop 17 lenght at 945= 21321539.0, 946= 19629379.0 947= 20699072.0
+pop 18 lenght at 945= 20332554.0, 946= 19937518.0 947= 20531976.0
+pop 19 lenght at 945= 19037445.0, 946= 20288689.0 947= 20449653.0
+best window -----------------------------
+pop 1 lenght at 945= 18968182.0, 946= 18968361.0 947= 18968361.0
+pop 4 lenght at 945= 18968527.0, 946= 18955936.0 947= 18955936.0
+pop 14 lenght at 945= 18998150.0, 946= 18998510.0 947= 18998510.0
+best members at 945
+pop 1 length 18968182.0
+pop 4 length 18968527.0
+pop 9 length 18975367.0
+pop 14 length 18998150.0
+pop 19 length 19037445.0
+pop 2 length 19038051.0
+pop 12 length 19092517.0
+pop 0 length 19871659.0
+pop 16 length 19919848.0
+pop 11 length 20045354.0
+pop 6 length 20069931.0
+pop 18 length 20332554.0
+pop 7 length 20649405.0
+pop 5 length 20676746.0
+pop 10 length 20758698.0
+pop 8 length 21001122.0
+pop 13 length 21018477.0
+pop 17 length 21321539.0
+pop 3 length 22005612.0
+pop 15 length 22112348.0
+(20,)
+mean of mins: 18967378.2 +- 3966.632546631967
+reach minimum after approx: 762.65 +- 88.68780919607835
+(1501, 20)
+annealing---------------------
+mean per population member
+min per population member
+run 0: 19098458.0 reached at sweep: 1058
+run 1: 19037878.0 reached at sweep: 191
+run 2: 19105288.0 reached at sweep: 607
+run 3: 19146652.0 reached at sweep: 1065
+run 4: 19162726.0 reached at sweep: 605
+run 5: 19049648.0 reached at sweep: 220
+run 6: 19233060.0 reached at sweep: 593
+run 7: 18814218.0 reached at sweep: 946
+run 8: 19180388.0 reached at sweep: 607
+run 9: 18976752.0 reached at sweep: 254
+run 10: 19076184.0 reached at sweep: 1062
+run 11: 19065888.0 reached at sweep: 234
+run 12: 19076688.0 reached at sweep: 607
+run 13: 18882306.0 reached at sweep: 185
+run 14: 18964792.0 reached at sweep: 601
+run 15: 18927100.0 reached at sweep: 609
+run 16: 19151702.0 reached at sweep: 1066
+run 17: 19074020.0 reached at sweep: 1071
+run 18: 18951502.0 reached at sweep: 605
+run 19: 19005654.0 reached at sweep: 267
+mean of mins: 19049045.2 +- 103387.13690667711
+reach minimum after approx: 622.65 +- 319.1144426377471
+(20, 1501)
